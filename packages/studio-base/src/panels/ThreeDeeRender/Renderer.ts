@@ -24,6 +24,7 @@ import {
 } from "@foxglove/studio";
 import { FoxgloveGrid } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/FoxgloveGrid";
 import { light, dark } from "@foxglove/studio-base/theme/palette";
+import { LDObjectLists } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/LDObjects";
 import { fonts } from "@foxglove/studio-base/util/sharedStyleConstants";
 import { LabelMaterial, LabelPool } from "@foxglove/three-text";
 
@@ -46,6 +47,7 @@ import {
   normalizeTransformStamped,
 } from "./normalizeMessages";
 import { Cameras } from "./renderables/Cameras";
+import { CircleGrids } from "./renderables/CircleGrids";
 import { CoreSettings } from "./renderables/CoreSettings";
 import { FrameAxes, LayerSettingsTransform } from "./renderables/FrameAxes";
 import { Grids } from "./renderables/Grids";
@@ -473,6 +475,8 @@ export class Renderer extends EventEmitter<RendererEvents> {
     this.addSceneExtension(new Cameras(this));
     this.addSceneExtension(new FrameAxes(this));
     this.addSceneExtension(new Grids(this));
+    this.addSceneExtension(new CircleGrids(this));
+    this.addSceneExtension(new LDObjectLists(this));
     this.addSceneExtension(new Images(this));
     this.addSceneExtension(new Markers(this));
     this.addSceneExtension(new FoxgloveSceneEntities(this));
