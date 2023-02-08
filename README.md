@@ -96,6 +96,10 @@ $ yarn web:serve
 # To launch the browser app using a local instance of the backend server:
 $ yarn web:serve:local
 
+
+echo fs.inotify.max_user_instances=524288 | sudo tee -a /etc/sysctl.conf && sudo sysctl -p
+
+
 # To launch the storybook:
 $ yarn storybook
 

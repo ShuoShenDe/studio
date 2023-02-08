@@ -23,8 +23,8 @@
         "NODE_OPTIONS": "--require ts-node/register"
       },
       "console": "integratedTerminal",
-      "internalConsoleOptions": "neverOpen",
-      "disableOptimisticBPs": true
+      "internalConsoleOptions": "neverOpen"
+      // "disableOptimisticBPs": true
     }
   ]
 }

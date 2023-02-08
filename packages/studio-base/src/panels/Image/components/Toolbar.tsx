@@ -2,6 +2,7 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import { EditIcon } from "@fluentui/react-icons-mdl2";
 import CursorIcon from "@mdi/svg/svg/cursor-default.svg";
 import { Typography, styled as muiStyled } from "@mui/material";
 import { ReactElement, useEffect, useRef, useState } from "react";

@@ -37,6 +37,8 @@ import TeleopHelp from "./Teleop/index.help.md";
 import teleopThumbnail from "./Teleop/thumbnail.png";
 import ThreeDeeRenderHelp from "./ThreeDeeRender/index.help.md";
 import threeDeeRenderThumbnail from "./ThreeDeeRender/thumbnail.png";
+import ThreeDeeRenderHelp2 from "./ThreeDeeRender2/index.help.md";
+import threeDeeRenderThumbnail2 from "./ThreeDeeRender2/thumbnail.png";
 import TopicGraphHelp from "./TopicGraph/index.help.md";
 import topicGraphThumbnail from "./TopicGraph/thumbnail.png";
 import URDFViewerHelp from "./URDFViewer/index.help.md";
@@ -56,6 +58,15 @@ const builtin: PanelInfo[] = [
     help: ThreeDeeRenderHelp,
     thumbnail: threeDeeRenderThumbnail,
     module: async () => await import("./ThreeDeeRender"),
+    settingsOnboardingTooltip: "Open settings to configure topics and layers.",
+  },
+  {
+    title: "3D2",
+    type: "3D2",
+    description: "Display markers, camera images, meshes, URDFs, and more in a 3D scene.",
+    help: ThreeDeeRenderHelp2,
+    thumbnail: threeDeeRenderThumbnail2,
+    module: async () => await import("./ThreeDeeRender2"),
     settingsOnboardingTooltip: "Open settings to configure topics and layers.",
   },
   {

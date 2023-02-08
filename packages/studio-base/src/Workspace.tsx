@@ -197,6 +197,10 @@ export default function Workspace(props: WorkspaceProps): JSX.Element {
   const { currentUser } = useCurrentUser();
 
   const { currentUserRequired } = useInitialDeepLinkState(props.deepLinks ?? DEFAULT_DEEPLINKS);
+  // eslint-disable-next-line no-restricted-syntax
+  console.log("Worksapce deep link");
+  // eslint-disable-next-line no-restricted-syntax
+  console.log(props.deepLinks ?? DEFAULT_DEEPLINKS);
 
   useDefaultWebLaunchPreference();
 

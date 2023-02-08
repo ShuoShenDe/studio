@@ -87,7 +87,7 @@ declare module "@foxglove/studio" {
   /**
    * A message event frames message data with the topic and receive time
    */
-  export type MessageEvent<T> = Readonly<{
+  export type MessageEvent2<T> = {
     /** The topic name this message was received on, i.e. "/some/topic" */
     topic: string;
     /**
@@ -124,7 +124,46 @@ declare module "@foxglove/studio" {
      * un-converted message event.
      */
     originalMessageEvent?: MessageEvent<unknown>;
-  }>;
+  };
+
+  export type MessageEvent<T> = {
+    /** The topic name this message was received on, i.e. "/some/topic" */
+    topic: string;
+    /**
+     * The schema name is an identifier for the schema of the message within the message event.
+     */
+    schemaName: string;
+    /**
+     * The time in nanoseconds this message was received. This may be set by the
+     * local system clock or the data source, depending on the data source used
+     * and whether time is simulated via a /clock topic or similar mechanism.
+     * The timestamp is often nanoseconds since the UNIX epoch, but may be
+     * relative to another event such as system boot time or simulation start
+     * time depending on the context.
+     */
+    receiveTime: Time;
+    /**
+     * The time in nanoseconds this message was originally published. This is
+     * only available for some data sources. The timestamp is often nanoseconds
+     * since the UNIX epoch, but may be relative to another event such as system
+     * boot time or simulation start time depending on the context.
+     */
+    publishTime?: Time;
+    /** The deserialized message as a JavaScript object. */
+    message: T;
+    /**
+     * The approximate size of this message in its serialized form. This can be
+     * useful for statistics tracking and cache eviction.
+     */
+    sizeInBytes: number;
+
+    /**
+     * When subscribing to a topic using the `convertTo` option, the message event `message`
+     * contains the converted message and the originalMessageEvent field contains the original
+     * un-converted message event.
+     */
+    originalMessageEvent?: MessageEvent<unknown>;
+  };
 
   export interface LayoutActions {
     /** Open a new panel or update an existing panel in the layout.  */

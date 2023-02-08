@@ -11,7 +11,7 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { Typography, styled as muiStyled } from "@mui/material";
+import { Typography, styled as muiStyled, Button } from "@mui/material";
 import produce from "immer";
 import { difference, set, union } from "lodash";
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
@@ -272,6 +272,8 @@ function ImageView(props: Props) {
           />
         </Stack>
       </PanelToolbar>
+
+      {/* right click */}
       <PanelContextMenu itemsForClickPosition={contextMenuItemsForClickPosition} />
       <Stack fullWidth fullHeight>
         {/* Always render the ImageCanvas because it's expensive to unmount and start up. */}

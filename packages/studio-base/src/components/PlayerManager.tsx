@@ -173,6 +173,10 @@ export default function PlayerManager(props: PropsWithChildren<PlayerManagerProp
       }
 
       try {
+        // eslint-disable-next-line no-restricted-syntax
+        console.log("args");
+        // eslint-disable-next-line no-restricted-syntax
+        console.log(args);
         switch (args.type) {
           case "connection": {
             const newPlayer = foundSource.initialize({
