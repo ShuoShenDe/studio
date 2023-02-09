@@ -37,7 +37,7 @@ const CONSTRUCTORS = {
  * An object pool for RenderableMarker subclass objects.
  */
 export class MarkerPool {
-  private renderablesByType = new Map<MarkerType, RenderableMarker[]>();
+  public renderablesByType = new Map<MarkerType, RenderableMarker[]>();
 
   public constructor(private renderer: Renderer) {}
 
@@ -55,6 +55,10 @@ export class MarkerPool {
         renderable.userData.settings = { visible: true, frameLocked: marker.frame_locked };
         renderable.userData.topic = topic;
         renderable.update(marker, receiveTime);
+        // eslint-disable-next-line no-restricted-syntax
+        console.log("MarkerPool - marker");
+        // eslint-disable-next-line no-restricted-syntax
+        console.log(marker);
         return renderable;
       }
     }

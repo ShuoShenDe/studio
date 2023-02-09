@@ -11,7 +11,7 @@ import { RenderableMarker } from "./RenderableMarker";
 import { makeStandardMaterial } from "./materials";
 
 export class RenderableCube extends RenderableMarker {
-  private mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>;
+  public mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshStandardMaterial>;
   private outline: THREE.LineSegments | undefined;
 
   public constructor(

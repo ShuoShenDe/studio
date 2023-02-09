@@ -6,6 +6,7 @@ import EventEmitter from "eventemitter3";
 import { Immutable, produce } from "immer";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { TransformControls } from "three/examples/jsm/controls/TransformControls";
 import { DeepPartial } from "ts-essentials";
 import { v4 as uuidv4 } from "uuid";
 
@@ -22,6 +23,7 @@ import {
   Topic,
   VariableValue,
 } from "@foxglove/studio";
+import { EditTool } from "@foxglove/studio-base/panels/ThreeDeeRender2/renderables/EditTool";
 import { FoxgloveGrid } from "@foxglove/studio-base/panels/ThreeDeeRender2/renderables/FoxgloveGrid";
 import { light, dark } from "@foxglove/studio-base/theme/palette";
 import { fonts } from "@foxglove/studio-base/util/sharedStyleConstants";
@@ -294,6 +296,8 @@ export class Renderer extends EventEmitter<RendererEvents> {
   private coreSettings: CoreSettings;
   public measurementTool: MeasurementTool;
   public drawCuboidTool: DrawCuboidTool;
+  public editTool: EditTool;
+
   public publishClickTool: PublishClickTool;
 
   private perspectiveCamera: THREE.PerspectiveCamera;
@@ -334,7 +338,8 @@ export class Renderer extends EventEmitter<RendererEvents> {
   private _animationFrame?: number;
   private _cameraSyncError: undefined | string;
   private _devicePixelRatioMediaQuery?: MediaQueryList;
-
+  private transformControl;
+  private urdf;
   public constructor(canvas: HTMLCanvasElement, config: RendererConfig) {
     super();
     // NOTE: Global side effect
@@ -421,6 +426,16 @@ export class Renderer extends EventEmitter<RendererEvents> {
       }
     });
 
+    this.transformControl = new TransformControls(this.perspectiveCamera, this.canvas);
+    this.transformControl.addEventListener("change", () => {
+      if (!this._isUpdatingCameraState) {
+        this.emit("cameraMove", this);
+      }
+    });
+    this.transformControl.addEventListener("dragging-changed", (event) => {
+      // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
+      this.controls.enabled = !event.value;
+    });
     // Make the canvas able to receive keyboard events and setup WASD controls
     canvas.tabIndex = 1000;
     this.controls.keys = { LEFT: "KeyA", RIGHT: "KeyD", UP: "KeyW", BOTTOM: "KeyS" };
@@ -443,9 +458,9 @@ export class Renderer extends EventEmitter<RendererEvents> {
     const renderSize = this.gl.getDrawingBufferSize(tempVec2);
     this.aspect = renderSize.width / renderSize.height;
     log.debug(`Initialized ${renderSize.width}x${renderSize.height} renderer (${samples}x MSAA)`);
-
     this.measurementTool = new MeasurementTool(this);
     this.drawCuboidTool = new DrawCuboidTool(this);
+    this.editTool = new EditTool(this);
     this.publishClickTool = new PublishClickTool(this);
     this.coreSettings = new CoreSettings(this);
 
@@ -484,16 +499,39 @@ export class Renderer extends EventEmitter<RendererEvents> {
     this.addSceneExtension(new Polygons(this));
     this.addSceneExtension(new Poses(this));
     this.addSceneExtension(new PoseArrays(this));
-    this.addSceneExtension(new Urdfs(this));
+    this.urdf = new Urdfs(this);
+    this.addSceneExtension(this.urdf);
     this.addSceneExtension(new VelodyneScans(this));
     this.addSceneExtension(this.measurementTool);
     this.addSceneExtension(this.drawCuboidTool);
+    this.addSceneExtension(this.editTool);
     this.addSceneExtension(this.publishClickTool);
 
     this._watchDevicePixelRatio();
 
     this._updateCameras(config.cameraState);
     this.animationFrame();
+  }
+
+  private _getObject(pickedRender: PickedRenderable): THREE.Object3D {
+    const geometry = new THREE.BoxGeometry(2, 2, 2);
+    const object = new THREE.Mesh(
+      geometry,
+      new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff }),
+    );
+    object.position.x = pickedRender.renderable.position.x;
+    object.position.y = pickedRender.renderable.position.y;
+    object.position.z = pickedRender.renderable.position.z;
+
+    object.rotation.x = pickedRender.renderable.rotation.x;
+    object.rotation.y = pickedRender.renderable.rotation.y;
+    object.rotation.z = pickedRender.renderable.rotation.z;
+
+    object.scale.x = pickedRender.renderable.scale.x;
+    object.scale.y = pickedRender.renderable.scale.y;
+    object.scale.z = pickedRender.renderable.scale.z;
+    this.scene.add(object);
+    return object;
   }
 
   private _onDevicePixelRatioChange = () => {
@@ -849,6 +887,21 @@ export class Renderer extends EventEmitter<RendererEvents> {
   }
 
   public setSelectedRenderable(selection: PickedRenderable | undefined): void {
+    // eslint-disable-next-line no-restricted-syntax
+    console.log("Renderer - setSelectedRenderable");
+    // eslint-disable-next-line no-restricted-syntax
+    console.log(selection?.renderable.details());
+    // selection.renderable.userData.pose 不能修改，因为会影响3D地图的显示
+    if (selection) {
+      // eslint-disable-next-line no-restricted-syntax
+      console.log(selection.renderable.pose);
+      // eslint-disable-next-line no-restricted-syntax
+      console.log("Renderer - start render transformControl");
+      this.transformControl.attach(selection.renderable); // transformControl依赖于selection.renderable中的pose进行
+    }
+
+    this.scene.add(this.transformControl);
+
     if (this.selectedRenderable === selection) {
       return;
     }
@@ -1033,7 +1086,7 @@ export class Renderer extends EventEmitter<RendererEvents> {
     const camera = this.activeCamera();
     camera.layers.set(LAYER_DEFAULT);
     this.selectionBackdrop.visible = this.selectedRenderable != undefined;
-
+    this.editTool.selectedObject = this.selectedRenderable;
     const renderFrameId = this.renderFrameId;
     const fixedFrameId = this.fixedFrameId;
     if (renderFrameId == undefined || fixedFrameId == undefined) {
@@ -1123,6 +1176,9 @@ export class Renderer extends EventEmitter<RendererEvents> {
       return;
     }
     if (this.drawCuboidTool.state !== "idle") {
+      return;
+    }
+    if (this.editTool.state !== "idle") {
       return;
     }
     // Deselect the currently selected object, if one is selected and re-render

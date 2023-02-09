@@ -35,6 +35,7 @@ import {
   Topic,
   VariableValue,
 } from "@foxglove/studio";
+import EditIcon from "@foxglove/studio-base/assets/edit-2-svgrepo-com.svg";
 import PublishGoalIcon from "@foxglove/studio-base/components/PublishGoalIcon";
 import PublishPointIcon from "@foxglove/studio-base/components/PublishPointIcon";
 import PublishPoseEstimateIcon from "@foxglove/studio-base/components/PublishPoseEstimateIcon";
@@ -97,8 +98,10 @@ function RendererOverlay(props: {
   enableStats: boolean;
   perspective: boolean;
   onTogglePerspective: () => void;
-  drawingActive: boolean;
   onClickDrawing: () => void;
+  drawingActive: boolean;
+  onEditing: () => void;
+  editingActive: boolean;
   canPublish: boolean;
   publishActive: boolean;
   publishClickType: PublishClickType;
@@ -193,10 +196,11 @@ function RendererOverlay(props: {
   );
 
   // console.log(selectedObject?.object.interactionData?.originalMessage);
-  // console.log(selectedRenderable?.renderable.details().timestamp);
 
   // Inform the Renderer when a renderable is selected
   useEffect(() => {
+    // eslint-disable-next-line no-restricted-syntax
+    console.log(selectedRenderable?.renderable.details().timestamp);
     renderer?.setSelectedRenderable(selectedRenderable);
   }, [renderer, selectedRenderable]);
 
@@ -250,13 +254,13 @@ function RendererOverlay(props: {
             <RulerIcon style={{ width: 16, height: 16 }} />
           </IconButton>
           <IconButton
-            data-testid="draw"
-            color={props.drawingActive ? "info" : "inherit"}
-            title={props.drawingActive ? "Cancel edit" : "Start edit"}
-            onClick={props.onClickDrawing}
+            data-testid="edit"
+            color={props.editingActive ? "info" : "inherit"}
+            title={props.editingActive ? "Cancel edit" : "Start edit"}
+            onClick={props.onEditing}
             style={{ position: "relative", pointerEvents: "auto" }}
           >
-            <RulerIcon style={{ width: 16, height: 16 }} />
+            <EditIcon style={{ width: 16, height: 16 }} />
           </IconButton>
 
           {showPublishControl && (
@@ -731,8 +735,6 @@ export function ThreeDeeRender2({ context }: { context: PanelExtensionContext })
         // eslint-disable-next-line no-restricted-syntax
         console.log(maybeHasMarkers.entities);
 
-        // eslint-disable-next-line no-restricted-syntax
-        console.log("add message event2");
         if (maybeHasMarkers.entities) {
           if (maybeHasMarkers.entities[0]?.cubes) {
             if (maybeHasMarkers.entities[0].cubes[0]?.pose?.position != undefined) {
@@ -826,6 +828,28 @@ export function ThreeDeeRender2({ context }: { context: PanelExtensionContext })
       renderer?.publishClickTool.stop();
     }
   }, [drawingActive, renderer]);
+
+  const [editingActive, setEditingActive] = useState(false);
+  useEffect(() => {
+    const onEditStart = () => setEditingActive(true);
+    const onEditEnd = () => setEditingActive(false);
+    renderer?.editTool.addEventListener("foxglove.edit-start", onEditStart);
+    renderer?.editTool.addEventListener("foxglove.edit-end", onEditEnd);
+
+    return () => {
+      renderer?.editTool.removeEventListener("foxglove.edit-start", onEditStart);
+      renderer?.editTool.removeEventListener("foxglove.edit-end", onEditEnd);
+    };
+  }, [renderer?.editTool]);
+
+  const onEditing = useCallback(() => {
+    if (editingActive) {
+      renderer?.editTool.stopEditing();
+    } else {
+      renderer?.editTool.startEditing();
+      renderer?.publishClickTool.stop();
+    }
+  }, [editingActive, renderer]);
 
   const [publishActive, setPublishActive] = useState(false);
   useEffect(() => {
@@ -930,6 +954,7 @@ export function ThreeDeeRender2({ context }: { context: PanelExtensionContext })
     } else {
       renderer?.publishClickTool.start();
       renderer?.drawCuboidTool.stopDrawing();
+      renderer?.editTool.stopEditing();
     }
   }, [publishActive, renderer]);
 
@@ -970,7 +995,7 @@ export function ThreeDeeRender2({ context }: { context: PanelExtensionContext })
             position: "absolute",
             top: 0,
             left: 0,
-            ...((drawingActive || publishActive) && { cursor: "crosshair" }),
+            ...((editingActive || drawingActive || publishActive) && { cursor: "crosshair" }),
           }}
         />
         <RendererContext.Provider value={renderer}>
@@ -981,7 +1006,9 @@ export function ThreeDeeRender2({ context }: { context: PanelExtensionContext })
             perspective={config.cameraState.perspective}
             onTogglePerspective={onTogglePerspective}
             drawingActive={drawingActive}
+            editingActive={editingActive}
             onClickDrawing={onClickDrawing}
+            onEditing={onEditing}
             canPublish={canPublish}
             publishActive={publishActive}
             onClickPublish={onClickPublish}
