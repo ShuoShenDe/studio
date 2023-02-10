@@ -3,6 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import * as THREE from "three";
+import { Vector3 } from "three";
 
 import type { RosValue } from "@foxglove/studio-base/players/types";
 
@@ -48,6 +49,11 @@ export class Renderable<TUserData extends BaseUserData = BaseUserData> extends T
   protected readonly renderer: Renderer;
   /** Additional data associated with this entity */
   public override userData: TUserData;
+
+  public pose: Pose = {
+    position: { x: 400, y: 1110, z: 1.78 },
+    orientation: { x: 0, y: 0, z: 0.979, w: 0.202 },
+  };
 
   public constructor(name: string, renderer: Renderer, userData: TUserData) {
     super();
@@ -96,10 +102,10 @@ export class Renderable<TUserData extends BaseUserData = BaseUserData> extends T
   /**
    * Return pose as defined in userData
    */
-  // eslint-disable-next-line no-restricted-syntax
-  public get pose(): Pose {
-    return this.userData.pose;
-  }
+
+  // public get pose(): Pose {
+  //   return this.userData.pose;
+  // }
   /**
    * Return a Plain Old JavaScript Object (POJO) representation of a specific
    * visual instance rendered by this Renderable.

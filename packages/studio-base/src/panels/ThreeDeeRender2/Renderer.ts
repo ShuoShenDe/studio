@@ -332,6 +332,11 @@ export class Renderer extends EventEmitter<RendererEvents> {
   public markerPool = new MarkerPool(this);
   public sharedGeometry = new SharedGeometry();
 
+  // record the click point
+  public onUpPosition = new THREE.Vector2();
+  public onDownPosition = new THREE.Vector2();
+  public pointer = new THREE.Vector2();
+
   private _prevResolution = new THREE.Vector2();
   private _pickingEnabled = false;
   private _isUpdatingCameraState = false;
@@ -380,6 +385,33 @@ export class Renderer extends EventEmitter<RendererEvents> {
       height = canvas.parentElement.clientHeight;
       this.gl.setSize(width, height);
     }
+
+    this.canvas.addEventListener("pointerdown", (_event) => {
+      this.onDownPosition.x = _event.clientX;
+      this.onDownPosition.y = _event.clientY;
+      // eslint-disable-next-line no-restricted-syntax
+      console.log("Rendere canvas Listen");
+      // eslint-disable-next-line no-restricted-syntax
+      console.log(this.onDownPosition);
+    });
+
+    this.canvas.addEventListener("pointerup", (_event) => {
+      this.onUpPosition.x = _event.clientX;
+      this.onUpPosition.y = _event.clientY;
+      if (this.onDownPosition.distanceTo(this.onUpPosition) === 0) {
+        this.transformControl.detach();
+      }
+      // eslint-disable-next-line no-restricted-syntax
+      console.log(this.onUpPosition);
+    });
+
+    this.canvas.addEventListener("pointermove", (_event) => {
+      this.pointer.x = (_event.clientX / window.innerWidth) * 2 - 1;
+      this.pointer.y = -(_event.clientY / window.innerHeight) * 2 + 1;
+      if (this.selectedRenderable) {
+        this.transformControl.attach(this.selectedRenderable.renderable);
+      }
+    });
 
     this.modelCache = new ModelCache({
       ignoreColladaUpAxis: config.scene.ignoreColladaUpAxis ?? false,
@@ -432,7 +464,12 @@ export class Renderer extends EventEmitter<RendererEvents> {
         this.emit("cameraMove", this);
       }
     });
+
     this.transformControl.addEventListener("dragging-changed", (event) => {
+      // eslint-disable-next-line no-restricted-syntax
+      console.log("Renderer transform Listen");
+      // eslint-disable-next-line no-restricted-syntax
+      console.log(event.value);
       // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
       this.controls.enabled = !event.value;
     });
@@ -890,9 +927,10 @@ export class Renderer extends EventEmitter<RendererEvents> {
     // eslint-disable-next-line no-restricted-syntax
     console.log("Renderer - setSelectedRenderable");
     // eslint-disable-next-line no-restricted-syntax
-    console.log(selection?.renderable.details());
+    console.log(selection?.renderable);
     // selection.renderable.userData.pose 不能修改，因为会影响3D地图的显示
     if (selection) {
+      selection.renderable.userData.settings.frameLocked = false;
       // eslint-disable-next-line no-restricted-syntax
       console.log(selection.renderable.pose);
       // eslint-disable-next-line no-restricted-syntax

@@ -34,6 +34,9 @@ export class RenderableCube extends RenderableMarker {
     this.mesh = new THREE.Mesh(cubeGeometry, makeStandardMaterial(marker.color));
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
+    this.mesh.position.set(marker.pose.position.x, marker.pose.position.y, marker.pose.position.z);
+    //this.mesh.rotation.set(marker.pose.orientation.x,marker.pose.orientation.y,marker.pose.orientation.z);
+    //this.mesh.scale.set(marker.scale.x, marker.scale.y, marker.scale.z);
     this.add(this.mesh);
 
     // Cube outline
