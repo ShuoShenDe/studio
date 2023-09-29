@@ -2,6 +2,8 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import { t } from "i18next";
+
 import { PinholeCameraModel } from "@foxglove/den/image";
 import Logger from "@foxglove/log";
 import { toNanoSec } from "@foxglove/rostime";
@@ -11,8 +13,8 @@ import type { RosValue } from "@foxglove/studio-base/players/types";
 
 import { RenderableLineList } from "./markers/RenderableLineList";
 import { cameraInfosEqual, normalizeCameraInfo, projectPixel } from "./projections";
+import type { AnyRendererSubscription, IRenderer } from "../IRenderer";
 import { BaseUserData, Renderable } from "../Renderable";
-import { Renderer } from "../Renderer";
 import { PartialMessageEvent, SceneExtension } from "../SceneExtension";
 import { SettingsTreeEntry } from "../SettingsManager";
 import { makeRgba, rgbaToCssString, stringToRgba } from "../color";
@@ -81,11 +83,24 @@ export class CameraInfoRenderable extends Renderable<CameraInfoUserData> {
 }
 
 export class Cameras extends SceneExtension<CameraInfoRenderable> {
-  public constructor(renderer: Renderer) {
-    super("foxglove.Cameras", renderer);
+  public static extensionId = "foxglove.Cameras";
+  public constructor(renderer: IRenderer, name: string = Cameras.extensionId) {
+    super(name, renderer);
+  }
 
-    renderer.addSchemaSubscriptions(ROS_CAMERA_INFO_DATATYPES, this.handleCameraInfo);
-    renderer.addSchemaSubscriptions(CAMERA_CALIBRATION_DATATYPES, this.handleCameraInfo);
+  public override getSubscriptions(): readonly AnyRendererSubscription[] {
+    return [
+      {
+        type: "schema",
+        schemaNames: ROS_CAMERA_INFO_DATATYPES,
+        subscription: { handler: this.#handleCameraInfo },
+      },
+      {
+        type: "schema",
+        schemaNames: CAMERA_CALIBRATION_DATATYPES,
+        subscription: { handler: this.#handleCameraInfo },
+      },
+    ];
   }
 
   public override settingsNodes(): SettingsTreeEntry[] {
@@ -103,12 +118,31 @@ export class Cameras extends SceneExtension<CameraInfoRenderable> {
       }
       const config = (configTopics[topic.name] ?? {}) as Partial<LayerSettingsCameraInfo>;
 
-      // prettier-ignore
       const fields: SettingsTreeFields = {
-        distance: { label: "Distance", input: "number", placeholder: String(DEFAULT_DISTANCE), step: 0.1, precision: PRECISION_DISTANCE, value: config.distance },
-        planarProjectionFactor: { label: "Planar Projection Factor", input: "number", placeholder: String(DEFAULT_PLANAR_PROJECTION_FACTOR), min: 0, max: 1, step: 0.1, precision: 2, value: config.planarProjectionFactor },
-        width: fieldLineWidth("Line Width", config.width, DEFAULT_WIDTH),
-        color: { label: "Color", input: "rgba", value: config.color ?? DEFAULT_COLOR_STR },
+        distance: {
+          label: t("threeDee:distance"),
+          input: "number",
+          placeholder: String(DEFAULT_DISTANCE),
+          step: 0.1,
+          precision: PRECISION_DISTANCE,
+          value: config.distance,
+        },
+        planarProjectionFactor: {
+          label: t("threeDee:planarProjectionFactor"),
+          input: "number",
+          placeholder: String(DEFAULT_PLANAR_PROJECTION_FACTOR),
+          min: 0,
+          max: 1,
+          step: 0.1,
+          precision: 2,
+          value: config.planarProjectionFactor,
+        },
+        width: fieldLineWidth(t("threeDee:lineWidth"), config.width, DEFAULT_WIDTH),
+        color: {
+          label: t("threeDee:color"),
+          input: "rgba",
+          value: config.color ?? DEFAULT_COLOR_STR,
+        },
       };
 
       entries.push({
@@ -142,7 +176,7 @@ export class Cameras extends SceneExtension<CameraInfoRenderable> {
         const settings = this.renderer.config.topics[topicName] as
           | Partial<LayerSettingsCameraInfo>
           | undefined;
-        this._updateCameraInfoRenderable(
+        this.#updateCameraInfoRenderable(
           renderable,
           cameraInfo,
           originalMessage,
@@ -153,7 +187,7 @@ export class Cameras extends SceneExtension<CameraInfoRenderable> {
     }
   };
 
-  private handleCameraInfo = (
+  #handleCameraInfo = (
     messageEvent: PartialMessageEvent<IncomingCameraInfo | CameraCalibration>,
   ): void => {
     const topic = messageEvent.topic;
@@ -189,7 +223,7 @@ export class Cameras extends SceneExtension<CameraInfoRenderable> {
       this.renderables.set(topic, renderable);
     }
 
-    this._updateCameraInfoRenderable(
+    this.#updateCameraInfoRenderable(
       renderable,
       cameraInfo,
       messageEvent.message,
@@ -198,7 +232,7 @@ export class Cameras extends SceneExtension<CameraInfoRenderable> {
     );
   };
 
-  private _updateCameraInfoRenderable(
+  #updateCameraInfoRenderable(
     renderable: CameraInfoRenderable,
     cameraInfo: CameraInfo,
     originalMessage: Record<string, RosValue> | undefined,
@@ -250,7 +284,7 @@ export class Cameras extends SceneExtension<CameraInfoRenderable> {
 
     // If the CameraInfo message contents changed or the settings changed, redraw the wireframe
     if (
-      renderable.userData.cameraModel?.P != undefined &&
+      renderable.userData.cameraModel != undefined &&
       (!dataEqual || !settingsEqual || !renderable.userData.lines)
     ) {
       this.renderer.settings.errors.removeFromTopic(topic, CAMERA_MODEL);

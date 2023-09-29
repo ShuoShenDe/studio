@@ -11,35 +11,36 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import BorderAllIcon from "@mui/icons-material/BorderAll";
-import DeleteForeverOutlinedIcon from "@mui/icons-material/DeleteForeverOutlined";
-import LibraryAddOutlinedIcon from "@mui/icons-material/LibraryAddOutlined";
-import TabIcon from "@mui/icons-material/Tab";
-import { Button, styled as muiStyled, useTheme } from "@mui/material";
-import { last } from "lodash";
+import {
+  Delete20Regular,
+  TabDesktop20Regular,
+  TabDesktopMultiple20Regular,
+  TableSimple20Regular,
+} from "@fluentui/react-icons";
+import * as _ from "lodash-es";
 import React, {
-  useState,
+  ComponentType,
+  MouseEventHandler,
+  Profiler,
   useCallback,
+  useContext,
+  useLayoutEffect,
   useMemo,
   useRef,
-  ComponentType,
-  Profiler,
-  MouseEventHandler,
-  useLayoutEffect,
-  CSSProperties,
-  useContext,
+  useState,
 } from "react";
 import {
-  MosaicContext,
-  MosaicWindowActions,
-  MosaicWindowContext,
   getNodeAtPath,
   getOtherBranch,
-  updateTree,
+  MosaicContext,
   MosaicNode,
+  MosaicWindowActions,
+  MosaicWindowContext,
+  updateTree,
 } from "react-mosaic-component";
 import { Transition } from "react-transition-group";
 import { useMountedState } from "react-use";
+import { makeStyles } from "tss-react/mui";
 
 import { useShallowMemo } from "@foxglove/hooks";
 import { useConfigById } from "@foxglove/studio-base/PanelAPI";
@@ -47,16 +48,21 @@ import KeyListener from "@foxglove/studio-base/components/KeyListener";
 import { MosaicPathContext } from "@foxglove/studio-base/components/MosaicPathContext";
 import PanelContext from "@foxglove/studio-base/components/PanelContext";
 import PanelErrorBoundary from "@foxglove/studio-base/components/PanelErrorBoundary";
-import { PanelRoot, PANEL_ROOT_CLASS_NAME } from "@foxglove/studio-base/components/PanelRoot";
+import { PanelOverlay, PanelOverlayProps } from "@foxglove/studio-base/components/PanelOverlay";
+import { PanelRoot } from "@foxglove/studio-base/components/PanelRoot";
 import {
   useCurrentLayoutActions,
   useSelectedPanels,
 } from "@foxglove/studio-base/context/CurrentLayoutContext";
 import { usePanelCatalog } from "@foxglove/studio-base/context/PanelCatalogContext";
-import { useWorkspace } from "@foxglove/studio-base/context/WorkspaceContext";
+import {
+  useWorkspaceStore,
+  WorkspaceStoreSelectors,
+} from "@foxglove/studio-base/context/Workspace/WorkspaceContext";
 import usePanelDrag from "@foxglove/studio-base/hooks/usePanelDrag";
+import { useMessagePathDrop } from "@foxglove/studio-base/services/messagePathDragging";
 import { TabPanelConfig } from "@foxglove/studio-base/types/layouts";
-import { PanelConfig, SaveConfig, OpenSiblingPanel } from "@foxglove/studio-base/types/panels";
+import { OpenSiblingPanel, PanelConfig, SaveConfig } from "@foxglove/studio-base/types/panels";
 import { TAB_PANEL_TYPE } from "@foxglove/studio-base/util/globalConstants";
 import {
   getPanelIdForType,
@@ -65,70 +71,32 @@ import {
   updateTabPanelLayout,
 } from "@foxglove/studio-base/util/layout";
 
-const ActionsOverlay = muiStyled("div")(({ theme }) => ({
-  cursor: "pointer",
-  position: "absolute",
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  zIndex: 100000, // highest level within panel
-  backgroundColor: theme.palette.background.paper,
-  display: "flex",
-  alignItems: "center",
-  alignContent: "center",
-  justifyContent: "center",
-  flexDirection: "column",
-  flexWrap: "wrap",
-  visibility: "hidden",
-  pointerEvents: "none",
-
-  [`.${PANEL_ROOT_CLASS_NAME}:hover > &`]: {
-    visibility: "visible",
-    pointerEvents: "auto",
+const useStyles = makeStyles()((theme) => ({
+  perfInfo: {
+    position: "absolute",
+    bottom: 2,
+    left: 3,
+    whiteSpace: "pre-line",
+    fontSize: "0.75em",
+    fontFeatureSettings: `${theme.typography.fontFeatureSettings}, 'zero'`,
+    opacity: 0.7,
+    userSelect: "none",
+    mixBlendMode: "difference",
   },
-  // for screenshot tests
-  ".hoverForScreenshot &": {
-    visible: "visible",
-    pointerEvents: "auto",
-  },
-}));
-
-const PerfInfo = muiStyled("div")({
-  position: "absolute",
-  whiteSpace: "pre-line",
-  bottom: 2,
-  left: 2,
-  fontSize: 9,
-  opacity: 0.7,
-  userSelect: "none",
-  mixBlendMode: "difference",
-});
-
-const Container = muiStyled("div", {
-  shouldForwardProp: (prop) => prop !== "direction",
-})<{
-  direction?: CSSProperties["flexDirection"];
-}>(({ direction = "column", theme }) => ({
-  padding: theme.spacing(2),
-  maxWidth: 300,
-  margin: "auto",
-  display: "flex",
-  flexDirection: direction,
-  gap: theme.spacing(1),
-}));
-
-const StyledButton = muiStyled(Button)(({ theme }) => ({
-  flexDirection: "column",
-  alignItems: "center",
-  textAlign: "center",
-  whiteSpace: "nowrap",
-  padding: theme.spacing(1, 2),
-  width: "50%",
-  flex: "auto",
-
-  ".MuiButton-startIcon": {
-    margin: 0,
+  tabCount: {
+    alignItems: "center",
+    justifyContent: "center",
+    position: "absolute",
+    display: "flex",
+    inset: 0,
+    textAlign: "center",
+    letterSpacing: "-0.125em",
+    // Totally random numbers here to get the text to fit inside the icon
+    paddingTop: 1,
+    paddingLeft: 5,
+    paddingRight: 11,
+    fontSize: `${theme.typography.subtitle2.fontSize} !important`,
+    fontWeight: 600,
   },
 }));
 
@@ -143,11 +111,8 @@ export interface PanelStatics<Config> {
   defaultConfig: Config;
 }
 
-// Like React.ComponentType<P>, but without restrictions on the constructor return type.
-type ComponentConstructorType<P> = { displayName?: string } & (
-  | { new (props: P): React.Component<unknown, unknown> }
-  | { (props: P): React.ReactElement<unknown> | ReactNull }
-);
+/** Used in storybook when panels are renered outside of a <PanelLayout/> */
+const FALLBACK_PANEL_ID = "$unknown_id";
 
 // HOC that wraps panel in an error boundary and flex box.
 // Gives panel a `config` and `saveConfig`.
@@ -159,11 +124,11 @@ export default function Panel<
   Config extends PanelConfig,
   PanelProps extends { config: Config; saveConfig: SaveConfig<Config> },
 >(
-  PanelComponent: ComponentConstructorType<PanelProps> & PanelStatics<Config>,
+  PanelComponent: ComponentType<PanelProps> & PanelStatics<Config>,
 ): ComponentType<Props<Config> & Omit<PanelProps, "config" | "saveConfig">> & PanelStatics<Config> {
   function ConnectedPanel(props: Props<Config>) {
-    const { childId, overrideConfig, tabId, ...otherProps } = props;
-    const theme = useTheme();
+    const { childId = FALLBACK_PANEL_ID, overrideConfig, tabId, ...otherProps } = props;
+    const { classes, cx, theme } = useStyles();
     const isMounted = useMountedState();
 
     const { mosaicActions } = useContext(MosaicContext);
@@ -179,7 +144,7 @@ export default function Panel<
     } = useSelectedPanels();
 
     const isSelected = useMemo(
-      () => childId != undefined && selectedPanelIds.includes(childId),
+      () => selectedPanelIds.includes(childId),
       [childId, selectedPanelIds],
     );
     const numSelectedPanelsIfSelected = useMemo(
@@ -282,7 +247,7 @@ export default function Panel<
 
         // Try to find a sibling panel and update it with the `siblingConfig`
         if (updateIfExists) {
-          const lastNode = last(ownPath);
+          const lastNode = _.last(ownPath);
           const siblingPathEnd = lastNode != undefined ? getOtherBranch(lastNode) : "second";
           const siblingPath = ownPath.slice(0, -1).concat(siblingPathEnd);
           const siblingId = getNodeAtPath(mosaicActions.getRoot(), siblingPath);
@@ -334,9 +299,6 @@ export default function Panel<
 
     const replacePanel = useCallback(
       (newPanelType: string, config: Record<string, unknown>) => {
-        if (childId == undefined) {
-          return;
-        }
         swapPanel({
           tabId,
           originalId: childId,
@@ -349,13 +311,10 @@ export default function Panel<
       [childId, mosaicActions, mosaicWindowActions, swapPanel, tabId],
     );
 
-    const { panelSettingsOpen } = useWorkspace();
+    const panelSettingsOpen = useWorkspaceStore(WorkspaceStoreSelectors.selectPanelSettingsOpen);
 
     const onPanelRootClick: MouseEventHandler<HTMLDivElement> = useCallback(
       (e) => {
-        if (childId == undefined) {
-          return;
-        }
         if (panelSettingsOpen) {
           // Allow clicking with no modifiers to select a panel (and deselect others) when panel settings are open
           e.stopPropagation(); // select the deepest clicked panel, not parent tab panels
@@ -408,7 +367,7 @@ export default function Panel<
         return;
       }
       const tabSavedProps = tabId != undefined ? (savedProps[tabId] as TabPanelConfig) : undefined;
-      if (tabId != undefined && tabSavedProps != undefined && childId != undefined) {
+      if (tabId != undefined && tabSavedProps != undefined) {
         const newId = getPanelIdForType(PanelComponent.panelType);
         const activeTabLayout = tabSavedProps.tabs[tabSavedProps.activeTabIdx]?.layout;
         if (activeTabLayout == undefined) {
@@ -467,13 +426,26 @@ export default function Panel<
       [parentPanelContext],
     );
 
+    const {
+      isDragging,
+      isOver,
+      isValidTarget,
+      connectMessagePathDropTarget,
+      dropMessage,
+      setMessagePathDropConfig,
+    } = useMessagePathDrop();
+
     // We use two separate sets of key handlers because the panel context and exitFullScreen
     // change often and invalidate our key handlers during user interactions.
     const { keyUpHandlers, keyDownHandlers } = useMemo(
       () => ({
         keyUpHandlers: {
-          "`": () => setQuickActionsKeyPressed(false),
-          "~": () => setQuickActionsKeyPressed(false),
+          Backquote: () => {
+            setQuickActionsKeyPressed(false);
+          },
+          "~": () => {
+            setQuickActionsKeyPressed(false);
+          },
         },
         keyDownHandlers: {
           a: (e: KeyboardEvent) => {
@@ -482,16 +454,27 @@ export default function Panel<
               selectAllPanels();
             }
           },
-          "`": () => setQuickActionsKeyPressed(true),
-          "~": () => setQuickActionsKeyPressed(true),
+          Backquote: () => {
+            setQuickActionsKeyPressed(true);
+          },
+          "~": () => {
+            setQuickActionsKeyPressed(true);
+          },
+          Escape: () => {
+            if (numSelectedPanelsIfSelected > 1) {
+              setSelectedPanelIds([]);
+            }
+          },
         },
       }),
-      [selectAllPanels],
+      [selectAllPanels, numSelectedPanelsIfSelected, setSelectedPanelIds],
     );
 
     const fullScreenKeyHandlers = useMemo(
       () => ({
-        Escape: () => exitFullscreen(),
+        Escape: () => {
+          exitFullscreen();
+        },
       }),
       [exitFullscreen],
     );
@@ -501,7 +484,7 @@ export default function Panel<
       // We have to lie to TypeScript with "as PanelProps" because the "PanelProps extends {...}"
       // constraint technically allows the panel to require the types of config/saveConfig be more
       // specific types that aren't satisfied by the functions we pass in
-      () => ({ config: panelComponentConfig, saveConfig, ...otherPanelProps } as PanelProps),
+      () => ({ config: panelComponentConfig, saveConfig, ...otherPanelProps }) as PanelProps,
       [otherPanelProps, panelComponentConfig, saveConfig],
     );
     const child = useMemo(() => <PanelComponent {...childProps} />, [childProps]);
@@ -519,16 +502,99 @@ export default function Panel<
       const overlay = quickActionsOverlayRef.current;
       if (overlay) {
         overlay.style.opacity = "0";
-        setTimeout(() => (overlay.style.opacity = "1"));
+        setTimeout(() => (overlay.style.opacity = "1"), 0);
       }
     }, []);
     const dragSpec = { tabId, panelId: childId, onDragStart };
     const [connectOverlayDragSource, connectOverlayDragPreview] = usePanelDrag(dragSpec);
     const [connectToolbarDragHandle, connectToolbarDragPreview] = usePanelDrag(dragSpec);
 
+    const panelOverlayProps = useMemo(() => {
+      const overlayProps: PanelOverlayProps = {
+        open:
+          isDragging || quickActionsKeyPressed || (isSelected && numSelectedPanelsIfSelected > 1),
+        variant: undefined,
+        highlightMode: undefined,
+        actions: undefined,
+        dropMessage,
+      };
+
+      if (isDragging && !isValidTarget) {
+        overlayProps.variant = "invalidDropTarget";
+      }
+      if (isDragging && isOver) {
+        overlayProps.variant = "validDropTarget";
+      }
+      if (isSelected && numSelectedPanelsIfSelected > 1) {
+        overlayProps.onClickAway = () => {
+          setSelectedPanelIds([]);
+        };
+        overlayProps.variant = "selected";
+        overlayProps.highlightMode = "all";
+        overlayProps.actions = [
+          {
+            key: "group",
+            text: "Group in tab",
+            icon: <TabDesktop20Regular />,
+            onClick: groupPanels,
+          },
+          {
+            key: "create-tabs",
+            text: "Create tabs",
+            icon: (
+              <>
+                <span className={classes.tabCount}>
+                  {numSelectedPanelsIfSelected <= 99 ? numSelectedPanelsIfSelected : ""}{" "}
+                </span>
+                <TabDesktopMultiple20Regular />
+              </>
+            ),
+            onClick: createTabs,
+          },
+        ];
+      }
+      if (type !== TAB_PANEL_TYPE && quickActionsKeyPressed) {
+        overlayProps.variant = "selected";
+        overlayProps.highlightMode = "active";
+      }
+      if (quickActionsKeyPressed) {
+        overlayProps.actions = [
+          {
+            key: "split",
+            text: "Split panel",
+            icon: <TableSimple20Regular />,
+            onClick: splitPanel,
+          },
+          {
+            key: "remove",
+            text: "Remove panel",
+            icon: <Delete20Regular />,
+            color: "error",
+            onClick: removePanel,
+          },
+        ];
+      }
+      return overlayProps;
+    }, [
+      classes.tabCount,
+      createTabs,
+      dropMessage,
+      groupPanels,
+      isDragging,
+      isOver,
+      isSelected,
+      isValidTarget,
+      numSelectedPanelsIfSelected,
+      quickActionsKeyPressed,
+      removePanel,
+      setSelectedPanelIds,
+      splitPanel,
+      type,
+    ]);
+
     return (
       <Profiler
-        id={childId ?? "$unknown_id"}
+        id={childId}
         onRender={(
           _id,
           _phase,
@@ -546,7 +612,7 @@ export default function Panel<
         <PanelContext.Provider
           value={{
             type,
-            id: childId ?? "$unknown_id",
+            id: childId,
             title,
             config: panelComponentConfig,
             saveConfig: saveConfig as SaveConfig<PanelConfig>,
@@ -560,13 +626,16 @@ export default function Panel<
             tabId,
             // disallow dragging the root panel in a layout
             connectToolbarDragHandle: isTopLevelPanel ? undefined : connectToolbarDragHandle,
+            setMessagePathDropConfig,
           }}
         >
           <KeyListener global keyUpHandlers={keyUpHandlers} keyDownHandlers={keyDownHandlers} />
           {fullscreen && <KeyListener global keyDownHandlers={fullScreenKeyHandlers} />}
           <Transition
             in={fullscreen}
-            onExited={() => setHasFullscreenDescendant(false)}
+            onExited={() => {
+              setHasFullscreenDescendant(false);
+            }}
             nodeRef={panelRootRef}
             timeout={{
               // match to transition duration inside PanelRoot
@@ -579,8 +648,8 @@ export default function Panel<
                 hasFullscreenDescendant={hasFullscreenDescendant}
                 fullscreenState={fullscreenState}
                 sourceRect={fullscreenSourceRect}
-                selected={isSelected}
-                data-testid={`panel-mouseenter-container ${childId ?? ""}`}
+                selected={isSelected || (isDragging && isValidTarget && isOver)}
+                data-testid={cx("panel-mouseenter-container", childId)}
                 ref={(el) => {
                   panelRootRef.current = el;
                   // disallow dragging the root panel in a layout
@@ -588,34 +657,12 @@ export default function Panel<
                     connectOverlayDragPreview(el);
                     connectToolbarDragPreview(el);
                   }
+                  connectMessagePathDropTarget(el);
                 }}
               >
-                {isSelected && !fullscreen && numSelectedPanelsIfSelected > 1 && (
-                  <ActionsOverlay>
-                    <Container>
-                      <Button
-                        fullWidth
-                        size="large"
-                        variant="contained"
-                        startIcon={<TabIcon fontSize="large" />}
-                        onClick={groupPanels}
-                      >
-                        Group in tab
-                      </Button>
-                      <Button
-                        fullWidth
-                        size="large"
-                        variant="contained"
-                        startIcon={<LibraryAddOutlinedIcon fontSize="large" />}
-                        onClick={createTabs}
-                      >
-                        Create {numSelectedPanelsIfSelected} tabs
-                      </Button>
-                    </Container>
-                  </ActionsOverlay>
-                )}
-                {type !== TAB_PANEL_TYPE && quickActionsKeyPressed && !fullscreen && (
-                  <ActionsOverlay
+                {!fullscreen && type !== TAB_PANEL_TYPE && (
+                  <PanelOverlay
+                    {...panelOverlayProps}
                     ref={(el) => {
                       quickActionsOverlayRef.current = el;
                       // disallow dragging the root panel in a layout
@@ -623,34 +670,14 @@ export default function Panel<
                         connectOverlayDragSource(el);
                       }
                     }}
-                  >
-                    <Container direction="row">
-                      <StyledButton
-                        size="large"
-                        variant="contained"
-                        startIcon={<DeleteForeverOutlinedIcon fontSize="large" />}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          removePanel();
-                        }}
-                      >
-                        Remove
-                      </StyledButton>
-                      <StyledButton
-                        size="large"
-                        variant="contained"
-                        startIcon={<BorderAllIcon fontSize="large" />}
-                        onClick={splitPanel}
-                      >
-                        Split
-                      </StyledButton>
-                    </Container>
-                  </ActionsOverlay>
+                  />
                 )}
                 <PanelErrorBoundary onRemovePanel={removePanel} onResetPanel={resetPanel}>
                   <React.StrictMode>{child}</React.StrictMode>
                 </PanelErrorBoundary>
-                {process.env.NODE_ENV !== "production" && <PerfInfo ref={perfInfo} />}
+                {process.env.NODE_ENV !== "production" && (
+                  <div className={classes.perfInfo} ref={perfInfo} />
+                )}
               </PanelRoot>
             )}
           </Transition>

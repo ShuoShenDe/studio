@@ -11,21 +11,22 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { Tooltip, Button, useTheme, Fade } from "@mui/material";
+import { Button, Fade, Tooltip, useTheme } from "@mui/material";
 import { ChartOptions, ScaleOptions } from "chart.js";
 import { AnnotationOptions } from "chartjs-plugin-annotation";
+import * as _ from "lodash-es";
+import * as R from "ramda";
 import React, {
-  useEffect,
-  useCallback,
-  useState,
-  useRef,
   ComponentProps,
-  useMemo,
   MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
 } from "react";
-import { useMountedState, useThrottle } from "react-use";
+import { useMountedState } from "react-use";
 import { makeStyles } from "tss-react/mui";
-import { useDebouncedCallback } from "use-debounce";
 import { v4 as uuidv4 } from "uuid";
 
 import type { ZoomOptions } from "@foxglove/chartjs-plugin-zoom/types/options";
@@ -36,30 +37,25 @@ import { RpcElement, RpcScales } from "@foxglove/studio-base/components/Chart/ty
 import KeyListener from "@foxglove/studio-base/components/KeyListener";
 import { useMessagePipeline } from "@foxglove/studio-base/components/MessagePipeline";
 import Stack from "@foxglove/studio-base/components/Stack";
-import TimeBasedChartLegend from "@foxglove/studio-base/components/TimeBasedChart/TimeBasedChartLegend";
 import {
   TimelineInteractionStateStore,
   useClearHoverValue,
-  useTimelineInteractionState,
   useSetHoverValue,
+  useTimelineInteractionState,
 } from "@foxglove/studio-base/context/TimelineInteractionStateContext";
-import { fonts } from "@foxglove/studio-base/util/sharedStyleConstants";
+import { Bounds } from "@foxglove/studio-base/types/Bounds";
+import { fontMonospace } from "@foxglove/theme";
 
 import HoverBar from "./HoverBar";
-import TimeBasedChartTooltipContent from "./TimeBasedChartTooltipContent";
+import TimeBasedChartTooltipContent, {
+  TimeBasedChartTooltipData,
+} from "./TimeBasedChartTooltipContent";
 import { VerticalBarWrapper } from "./VerticalBarWrapper";
-import { downsampleTimeseries, downsampleScatter } from "./downsample";
+import { ObjectDataProvider, TypedDataProvider } from "./types";
+import useDownsample from "./useDownsampler";
+import useProvider, { getBounds, getTypedBounds, mergeTyped, mergeNormal } from "./useProvider";
 
 const log = Logger.getLogger(__filename);
-
-export type TimeBasedChartTooltipData = {
-  datasetIndex?: number;
-  x: number | bigint;
-  y: number | bigint;
-  path: string;
-  value: number | bigint | boolean | string;
-  constantName?: string;
-};
 
 const useStyles = makeStyles()((theme) => ({
   root: {
@@ -71,16 +67,6 @@ const useStyles = makeStyles()((theme) => ({
     right: 0,
     marginBottom: theme.spacing(4),
     marginRight: theme.spacing(1),
-  },
-  legend: {
-    display: "flex",
-    width: "10%",
-    minWidth: 90,
-    overflowY: "auto",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    justifyContent: "start",
-    padding: theme.spacing(4, 0, 1, 0),
   },
   tooltip: {
     maxWidth: "none",
@@ -113,15 +99,16 @@ export type Props = {
   width: number;
   height: number;
   zoom: boolean;
-  data: ChartComponentProps["data"];
+  data?: ChartComponentProps["data"];
+  provider?: ObjectDataProvider;
+  typedData?: ChartComponentProps["typedData"];
+  typedProvider?: TypedDataProvider;
+  dataBounds?: Bounds;
   tooltips?: Map<string, TimeBasedChartTooltipData>;
   xAxes?: ScaleOptions<"linear">;
   yAxes: ScaleOptions<"linear">;
   annotations?: AnnotationOptions[];
-  drawLegend?: boolean;
   isSynced?: boolean;
-  canToggleLines?: boolean;
-  toggleLine?: (datasetId: string | typeof undefined, lineToHide: string) => void;
   linesToHide?: {
     [key: string]: boolean;
   };
@@ -141,26 +128,92 @@ export type Props = {
 // component. Uses chart.js internally, with a zoom/pan plugin, and with our
 // standard tooltips.
 export default function TimeBasedChart(props: Props): JSX.Element {
+  const requestID = useRef<number>(0);
   const {
+    currentTime,
+    data,
+    provider,
+    typedData,
+    typedProvider,
+    dataBounds,
     datasetId,
+    defaultView,
+    height,
+    isSynced = false,
+    showXAxisLabels,
     type,
     width,
-    height,
-    drawLegend,
-    canToggleLines,
-    toggleLine,
-    data,
-    isSynced = false,
-    tooltips,
-    yAxes,
     xAxes,
-    defaultView,
-    currentTime,
     xAxisIsPlaybackTime,
-    showXAxisLabels,
+    yAxes,
   } = props;
 
-  const { labels, datasets } = data;
+  const [datasetBounds, setDatasetBounds] = useState<Bounds>({
+    x: {
+      min: 0,
+      max: 0,
+    },
+    y: {
+      min: 0,
+      max: 0,
+    },
+  });
+
+  const [viewportBounds, setViewportBounds] = useState<Bounds>({
+    x: {
+      min: 0,
+      max: 0,
+    },
+    y: {
+      min: 0,
+      max: 0,
+    },
+  });
+
+  const view = React.useMemo(
+    () => ({
+      width,
+      height,
+      bounds: viewportBounds,
+    }),
+    [width, height, viewportBounds],
+  );
+
+  const linesToHide = useMemo(() => props.linesToHide ?? {}, [props.linesToHide]);
+
+  const { downsampler, setScales } = useDownsample(
+    React.useMemo(
+      () =>
+        filterMap(data?.datasets ?? [], (dataset) => {
+          const { label } = dataset;
+          if ((label == undefined || linesToHide[label]) ?? false) {
+            return;
+          }
+          return dataset;
+        }),
+      [data, linesToHide],
+    ),
+  );
+
+  const provided = useProvider(view, getBounds, mergeNormal, data, provider ?? downsampler);
+
+  const typedProvided = useProvider(view, getTypedBounds, mergeTyped, typedData, typedProvider);
+
+  React.useEffect(() => {
+    setDatasetBounds((oldBounds) => {
+      if (provided != undefined && R.equals(oldBounds, provided.bounds)) {
+        return provided.bounds;
+      }
+
+      if (typedProvided != undefined && R.equals(oldBounds, typedProvided.bounds)) {
+        return typedProvided.bounds;
+      }
+
+      return oldBounds;
+    });
+  }, [provided, typedProvided]);
+
+  const bounds = dataBounds ?? datasetBounds;
 
   const theme = useTheme();
   const { classes, cx } = useStyles();
@@ -175,6 +228,7 @@ export default function TimeBasedChart(props: Props): JSX.Element {
   );
 
   const resumeFrame = useRef<() => void | undefined>();
+  const requestedResumeFrame = useRef<() => void | undefined>();
 
   // when data changes, we pause and wait for onFinishRender to resume
   const onStartRender = useCallback(() => {
@@ -192,10 +246,14 @@ export default function TimeBasedChart(props: Props): JSX.Element {
   const onFinishRender = useCallback(() => {
     const current = resumeFrame.current;
     resumeFrame.current = undefined;
+    requestedResumeFrame.current = current;
 
     if (current) {
       // allow the chart offscreen canvas to render to screen before calling done
-      requestAnimationFrame(current);
+      requestID.current = requestAnimationFrame(() => {
+        current();
+        requestedResumeFrame.current = undefined;
+      });
     }
   }, []);
 
@@ -203,6 +261,8 @@ export default function TimeBasedChart(props: Props): JSX.Element {
     // cleanup paused frames on unmount or dataset changes
     return () => {
       onFinishRender();
+      cancelAnimationFrame(requestID.current);
+      requestedResumeFrame.current?.();
     };
   }, [pauseFrame, onFinishRender]);
 
@@ -215,52 +275,8 @@ export default function TimeBasedChart(props: Props): JSX.Element {
     [globalBounds, isSynced],
   );
 
-  const linesToHide = useMemo(() => props.linesToHide ?? {}, [props.linesToHide]);
-
   // some callbacks don't need to re-create when the current scales change, so we keep a ref
   const currentScalesRef = useRef<RpcScales | undefined>(undefined);
-
-  // calculates the minX/maxX for all our datasets
-  // we do this on the unfiltered datasets because we need the bounds to properly filter adjacent points
-  const datasetBounds = useMemo(() => {
-    let xMin: number | undefined;
-    let xMax: number | undefined;
-    let yMin: number | undefined;
-    let yMax: number | undefined;
-
-    for (const dataset of datasets) {
-      for (const item of dataset.data) {
-        if (item == undefined) {
-          continue;
-        }
-        if (!isNaN(item.x)) {
-          xMin = Math.min(xMin ?? item.x, item.x);
-          xMax = Math.max(xMax ?? item.x, item.x);
-        }
-
-        if (!isNaN(item.x)) {
-          yMin = Math.min(yMin ?? item.y, item.y);
-          yMax = Math.max(yMax ?? item.y, item.y);
-        }
-      }
-    }
-
-    return { x: { min: xMin, max: xMax }, y: { min: yMin, max: yMax } };
-  }, [datasets]);
-
-  // avoid re-doing a downsample on every scale change, instead mark the downsample as dirty
-  // with a debounce and if downsampling hasn't happened after some time, trigger a downsample via state update
-  const [invalidateDownsample, setDownsampleFlush] = useState({});
-  const queueDownsampleInvalidate = useDebouncedCallback(
-    () => {
-      setDownsampleFlush({});
-    },
-    100,
-    // maxWait equal to debounce timeout makes the debounce act like a throttle
-    // Without a maxWait - invocations of the debounced invalidate reset the countdown
-    // resulting in no invalidation when scales are constantly changing (playback)
-    { leading: false, maxWait: 100 },
-  );
 
   const onResetZoom = () => {
     setHasUserPannedOrZoomed(false);
@@ -281,15 +297,23 @@ export default function TimeBasedChart(props: Props): JSX.Element {
 
   const keyDownHandlers = React.useMemo(
     () => ({
-      v: () => setHasVerticalExclusiveZoom(true),
-      b: () => setHasBothAxesZoom(true),
+      v: () => {
+        setHasVerticalExclusiveZoom(true);
+      },
+      b: () => {
+        setHasBothAxesZoom(true);
+      },
     }),
     [setHasVerticalExclusiveZoom, setHasBothAxesZoom],
   );
   const keyUphandlers = React.useMemo(
     () => ({
-      v: () => setHasVerticalExclusiveZoom(false),
-      b: () => setHasBothAxesZoom(false),
+      v: () => {
+        setHasVerticalExclusiveZoom(false);
+      },
+      b: () => {
+        setHasBothAxesZoom(false);
+      },
     }),
     [setHasVerticalExclusiveZoom, setHasBothAxesZoom],
   );
@@ -303,54 +327,57 @@ export default function TimeBasedChart(props: Props): JSX.Element {
     y: number;
     data: TimeBasedChartTooltipData[];
   }>();
-  const updateTooltip = useCallback(
-    (elements: RpcElement[]) => {
-      if (elements.length === 0 || mouseYRef.current == undefined) {
-        return setActiveTooltip(undefined);
+
+  const updateTooltip = useCallback((elements: RpcElement[]) => {
+    if (elements.length === 0 || mouseYRef.current == undefined) {
+      setActiveTooltip(undefined);
+      return;
+    }
+
+    const tooltipItems: { item: TimeBasedChartTooltipData; element: RpcElement }[] = [];
+
+    for (const element of elements) {
+      if (!element.data) {
+        continue;
       }
 
-      const tooltipItems: { item: TimeBasedChartTooltipData; element: RpcElement }[] = [];
-
-      for (const element of elements) {
-        if (!element.data) {
-          continue;
-        }
-        const key = `${element.data.x}:${element.data.y}:${element.datasetIndex}`;
-        const foundTooltip = tooltips?.get(key);
-        if (!foundTooltip) {
-          continue;
-        }
-
-        tooltipItems.push({
-          item: { ...foundTooltip, datasetIndex: element.datasetIndex },
-          element,
-        });
+      const datum = element.data;
+      if (datum.value == undefined) {
+        continue;
       }
 
-      if (tooltipItems.length === 0) {
-        return setActiveTooltip(undefined);
-      }
+      tooltipItems.push({
+        item: {
+          datasetIndex: element.datasetIndex,
+          value: datum.value,
+          constantName: datum.constantName,
+        },
+        element,
+      });
+    }
 
-      const element = tooltipItems[0]!.element;
+    if (tooltipItems.length === 0) {
+      setActiveTooltip(undefined);
+      return;
+    }
 
-      const canvasRect = canvasContainer.current?.getBoundingClientRect();
-      if (canvasRect) {
-        setActiveTooltip({
-          x: canvasRect.left + element.view.x,
-          y: canvasRect.top + mouseYRef.current,
-          data: tooltipItems.map((item) => item.item),
-        });
-      }
-    },
-    [tooltips],
-  );
+    const element = tooltipItems[0]!.element;
+
+    const canvasRect = canvasContainer.current?.getBoundingClientRect();
+    if (canvasRect) {
+      setActiveTooltip({
+        x: canvasRect.left + element.view.x,
+        y: canvasRect.top + mouseYRef.current,
+        data: tooltipItems.map((item) => item.item),
+      });
+    }
+  }, []);
 
   const setHoverValue = useSetHoverValue();
   const clearHoverValue = useClearHoverValue();
-  const clearGlobalHoverTime = useCallback(
-    () => clearHoverValue(componentId),
-    [clearHoverValue, componentId],
-  );
+  const clearGlobalHoverTime = useCallback(() => {
+    clearHoverValue(componentId);
+  }, [clearHoverValue, componentId]);
 
   const onMouseOut = useCallback(() => {
     setActiveTooltip(undefined);
@@ -453,8 +480,8 @@ export default function TimeBasedChart(props: Props): JSX.Element {
       max = currentTime ?? 0;
       min = max - defaultView.width;
     } else {
-      min = datasetBounds.x.min;
-      max = datasetBounds.x.max;
+      min = bounds.x.min;
+      max = bounds.x.max;
     }
 
     // If the global bounds are from user interaction, we use that unconditionally.
@@ -473,8 +500,8 @@ export default function TimeBasedChart(props: Props): JSX.Element {
   }, [
     componentId,
     currentTime,
-    datasetBounds.x.max,
-    datasetBounds.x.min,
+    bounds.x.max,
+    bounds.x.min,
     defaultView,
     syncedGlobalBounds,
     hasUserPannedOrZoomed,
@@ -483,7 +510,7 @@ export default function TimeBasedChart(props: Props): JSX.Element {
   const xScale = useMemo<ScaleOptions>(() => {
     const defaultXTicksSettings: ScaleOptions["ticks"] = {
       font: {
-        family: fonts.MONOSPACE,
+        family: fontMonospace,
         size: 10,
       },
       color: theme.palette.text.secondary,
@@ -508,7 +535,7 @@ export default function TimeBasedChart(props: Props): JSX.Element {
   const yScale = useMemo<ScaleOptions>(() => {
     const defaultYTicksSettings: ScaleOptions["ticks"] = {
       font: {
-        family: fonts.MONOSPACE,
+        family: fontMonospace,
         size: 10,
       },
       color: theme.palette.text.secondary,
@@ -520,10 +547,10 @@ export default function TimeBasedChart(props: Props): JSX.Element {
     // chartjs doesn't like it when only one of min/max are specified for scales
     // so if either is specified then we specify both
     if (maxY == undefined && minY != undefined) {
-      maxY = datasetBounds.y.max;
+      maxY = bounds.y.max;
     }
     if (minY == undefined && maxY != undefined) {
-      minY = datasetBounds.y.min;
+      minY = bounds.y.min;
     }
 
     return {
@@ -536,119 +563,7 @@ export default function TimeBasedChart(props: Props): JSX.Element {
         ...yAxes.ticks,
       },
     } as ScaleOptions;
-  }, [datasetBounds.y, yAxes, theme.palette]);
-
-  const datasetBoundsRef = useRef(datasetBounds);
-  datasetBoundsRef.current = datasetBounds;
-  const downsampleDatasets = useCallback(
-    (fullDatasets: typeof datasets) => {
-      const currentScales = currentScalesRef.current;
-      let bounds:
-        | {
-            width: number;
-            height: number;
-            x: { min: number; max: number };
-            y: { min: number; max: number };
-          }
-        | undefined = undefined;
-      if (currentScales?.x && currentScales.y) {
-        bounds = {
-          width,
-          height,
-          x: {
-            min: currentScales.x.min,
-            max: currentScales.x.max,
-          },
-          y: {
-            min: currentScales.y.min,
-            max: currentScales.y.max,
-          },
-        };
-      }
-
-      const dataBounds = datasetBoundsRef.current;
-
-      // if we don't have bounds (chart not initialized) but do have dataset bounds
-      // then setup bounds as x/y min/max around the dataset values rather than the scales
-      if (
-        !bounds &&
-        dataBounds.x.min != undefined &&
-        dataBounds.x.max != undefined &&
-        dataBounds.y.min != undefined &&
-        dataBounds.y.max != undefined
-      ) {
-        bounds = {
-          width,
-          height,
-          x: {
-            min: dataBounds.x.min,
-            max: dataBounds.x.max,
-          },
-          y: {
-            min: dataBounds.y.min,
-            max: dataBounds.y.max,
-          },
-        };
-      }
-
-      // If we don't have any bounds - we assume the component is still initializing and return no data
-      // The other alternative is to return the full data set. This leads to rendering full fidelity data
-      // which causes render pauses and blank charts for large data sets.
-      if (!bounds) {
-        return [];
-      }
-
-      return fullDatasets.map((dataset) => {
-        if (!bounds) {
-          return dataset;
-        }
-
-        const downsampled =
-          dataset.showLine !== true
-            ? downsampleScatter(dataset, bounds)
-            : downsampleTimeseries(dataset, bounds);
-        // NaN item values create gaps in the line
-        const undefinedToNanData = downsampled.data.map((item) => {
-          if (item == undefined || isNaN(item.x) || isNaN(item.y)) {
-            return { x: NaN, y: NaN };
-          }
-          return item;
-        });
-
-        return { ...downsampled, data: undefinedToNanData };
-      });
-    },
-    [height, width],
-  );
-
-  // remove datasets that should be hidden
-  const visibleDatasets = useMemo(() => {
-    return filterMap(datasets, (dataset) => {
-      const { label } = dataset;
-      if ((label == undefined || linesToHide[label]) ?? false) {
-        return;
-      }
-      return dataset;
-    });
-  }, [datasets, linesToHide]);
-
-  // throttle the downsampleDatasets callback since this is an input to the downsampledData memo
-  // avoids doing a downsample if the callback changes rapidly
-  const throttledDownsample = useThrottle(() => downsampleDatasets, 100);
-
-  // downsample datasets with the latest downsample function
-  const downsampledDatasets = useMemo(() => {
-    void invalidateDownsample;
-
-    return throttledDownsample(visibleDatasets);
-  }, [invalidateDownsample, throttledDownsample, visibleDatasets]);
-
-  const downsampledData = useMemo(() => {
-    return {
-      labels,
-      datasets: downsampledDatasets,
-    };
-  }, [labels, downsampledDatasets]);
+  }, [bounds.y, yAxes, theme.palette]);
 
   const options = useMemo<ChartOptions>(() => {
     return {
@@ -684,13 +599,34 @@ export default function TimeBasedChart(props: Props): JSX.Element {
         return;
       }
 
+      // If this is an update from the chart adjusting its own bounds and not a
+      // user interaction and the X scale is defined but hasn't changed we can
+      // skip updating global bounds and downsampling. This avoids a feedback
+      // loop on boundary conditions when the chart is adjusting its own Y axis
+      // to fit the dataset.
+      if (
+        scales.x != undefined &&
+        _.isEqual(scales.x, currentScalesRef.current?.x) &&
+        !userInteraction
+      ) {
+        return;
+      }
+
       if (userInteraction) {
         setHasUserPannedOrZoomed(true);
       }
 
       currentScalesRef.current = scales;
+      if (scales.x != undefined && scales.y != undefined) {
+        const { x, y } = scales;
+        setViewportBounds({
+          x,
+          y,
+        });
+      }
 
-      queueDownsampleInvalidate();
+      // Scales updated which indicates we might need to adjust the downsampling
+      setScales(scales);
 
       // chart indicated we got a scales update, we may need to update global bounds
       if (!isSynced || !scales.x) {
@@ -753,27 +689,43 @@ export default function TimeBasedChart(props: Props): JSX.Element {
         };
       });
     },
-    [componentId, isMounted, isSynced, queueDownsampleInvalidate, setGlobalBounds],
+    [componentId, isMounted, isSynced, setGlobalBounds, setScales],
   );
 
-  useEffect(() => log.debug(`<TimeBasedChart> (datasetId=${datasetId})`), [datasetId]);
+  useEffect(() => {
+    log.debug(`<TimeBasedChart> (datasetId=${datasetId})`);
+  }, [datasetId]);
 
-  const colorsByDatasetIndex = useMemo(() => {
+  const datasets = provided?.data.datasets ?? typedProvided?.data.datasets;
+  const datasetsLength = datasets?.length ?? 0;
+
+  const colorsByDatasetIndex: Record<string, undefined | string> = useMemo(() => {
+    if (datasets == undefined) {
+      return {};
+    }
+
     return Object.fromEntries(
-      data.datasets.map((dataset, index) => [index, dataset.borderColor?.toString()]),
+      datasets.map((dataset, index) => [index, dataset.borderColor?.toString()]),
     );
-  }, [data.datasets]);
+  }, [datasets]);
 
-  const datasetsLength = datasets.length;
+  const labelsByDatasetIndex: Record<string, undefined | string> = useMemo(() => {
+    if (datasets == undefined) {
+      return {};
+    }
+    return Object.fromEntries(datasets.map((dataset, index) => [index, dataset.label]));
+  }, [datasets]);
+
   const tooltipContent = useMemo(() => {
     return activeTooltip ? (
       <TimeBasedChartTooltipContent
         content={activeTooltip.data}
         multiDataset={datasetsLength > 1}
         colorsByDatasetIndex={colorsByDatasetIndex}
+        labelsByDatasetIndex={labelsByDatasetIndex}
       />
     ) : undefined;
-  }, [activeTooltip, colorsByDatasetIndex, datasetsLength]);
+  }, [activeTooltip, colorsByDatasetIndex, datasetsLength, labelsByDatasetIndex]);
 
   // reset is shown if we have sync lock and there has been user interaction, or if we don't
   // have sync lock and the user has manually interacted with the plot
@@ -792,7 +744,8 @@ export default function TimeBasedChart(props: Props): JSX.Element {
     height,
     isBoundsReset: globalBounds == undefined,
     options,
-    data: downsampledData,
+    data: provided?.data,
+    typedData: typedProvided?.data,
     onClick: props.onClick,
     onScalesUpdate,
     onStartRender,
@@ -823,7 +776,7 @@ export default function TimeBasedChart(props: Props): JSX.Element {
           <div className={classes.root} onDoubleClick={onResetZoom}>
             <HoverBar
               componentId={componentId}
-              isTimestampScale={xAxisIsPlaybackTime}
+              isPlaybackSeconds={xAxisIsPlaybackTime}
               scales={currentScalesRef.current}
             >
               <div
@@ -860,17 +813,6 @@ export default function TimeBasedChart(props: Props): JSX.Element {
           </div>
         </Stack>
       </Tooltip>
-      {drawLegend === true && (
-        <div className={classes.legend}>
-          <TimeBasedChartLegend
-            datasetId={datasetId}
-            canToggleLines={canToggleLines}
-            datasets={data.datasets}
-            linesToHide={linesToHide}
-            toggleLine={toggleLine}
-          />
-        </div>
-      )}
     </Stack>
   );
 }

@@ -11,16 +11,17 @@ import { GRID_DATATYPES } from "@foxglove/studio-base/panels/ThreeDeeRender/foxg
 import type { RosValue } from "@foxglove/studio-base/players/types";
 
 import {
-  baseColorModeSettingsNode,
+  colorModeSettingsFields,
   ColorModeSettings,
   getColorConverter,
-  autoSelectColorField,
   NEEDS_MIN_MAX,
   FS_SRGB_TO_LINEAR,
-} from "./pointClouds/colors";
+  RGBA_PACKED_FIELDS,
+  hasSeparateRgbaFields,
+} from "./colorMode";
 import { FieldReader, getReader } from "./pointClouds/fieldReaders";
+import type { AnyRendererSubscription, IRenderer } from "../IRenderer";
 import { BaseUserData, Renderable } from "../Renderable";
-import { Renderer } from "../Renderer";
 import { PartialMessage, PartialMessageEvent, SceneExtension } from "../SceneExtension";
 import { SettingsTreeEntry, SettingsTreeNodeWithActionHandler } from "../SettingsManager";
 import { rgbaToCssString, rgbaToLinear, stringToRgba } from "../color";
@@ -128,17 +129,17 @@ function numericTypeName(type: NumericType): string {
   return NumericType[type as number] ?? `${type}`;
 }
 
-function getTextureEncoding(settings: GridColorModeSettings) {
+function getTextureColorSpace(settings: GridColorModeSettings): THREE.ColorSpace {
   switch (settings.colorMode) {
     case "flat":
       // color is converted to linear by getColorConverter before being written to the texture
-      return THREE.LinearEncoding;
+      return THREE.LinearSRGBColorSpace;
     case "gradient":
     case "colormap":
       // color value is raw numeric value
-      return THREE.LinearEncoding;
+      return THREE.LinearSRGBColorSpace;
     case "rgba-fields":
-      return THREE.sRGBEncoding;
+      return THREE.SRGBColorSpace;
   }
 }
 
@@ -161,7 +162,7 @@ export class FoxgloveGridRenderable extends Renderable<FoxgloveGridUserData> {
     pickingMaterial.needsUpdate = true;
   }
 
-  private _getRgbaFieldReaders(out: RgbaFieldReaders, foxgloveGrid: Grid) {
+  #getRgbaFieldReaders(out: RgbaFieldReaders, foxgloveGrid: Grid) {
     const { cell_stride } = foxgloveGrid;
     for (const field of foxgloveGrid.fields) {
       const { name } = field;
@@ -177,7 +178,7 @@ export class FoxgloveGridRenderable extends Renderable<FoxgloveGridUserData> {
     }
   }
 
-  private _getColorByFieldReader(
+  #getColorByFieldReader(
     foxgloveGrid: Grid,
     settings: LayerSettingsFoxgloveGrid,
   ): FieldReader | undefined {
@@ -275,7 +276,7 @@ export class FoxgloveGridRenderable extends Renderable<FoxgloveGridUserData> {
 
   public updateTexture(foxgloveGrid: Grid, settings: LayerSettingsFoxgloveGrid): void {
     let texture = this.userData.texture;
-    const fieldReader = this._getColorByFieldReader(foxgloveGrid, settings);
+    const fieldReader = this.#getColorByFieldReader(foxgloveGrid, settings);
     if (!fieldReader) {
       return;
     }
@@ -302,9 +303,9 @@ export class FoxgloveGridRenderable extends Renderable<FoxgloveGridUserData> {
       this.userData.material.uniforms.map.value = texture;
     }
 
-    const encoding = getTextureEncoding(settings);
-    if (encoding !== texture.encoding) {
-      texture.encoding = encoding;
+    const colorSpace = getTextureColorSpace(settings);
+    if (colorSpace !== texture.colorSpace) {
+      texture.colorSpace = colorSpace;
       texture.needsUpdate = true;
     }
 
@@ -326,7 +327,7 @@ export class FoxgloveGridRenderable extends Renderable<FoxgloveGridUserData> {
       const rgba = texture.image.data;
       let hasTransparency = false;
       if (settings.colorMode === "rgba-fields") {
-        this._getRgbaFieldReaders(tempRgbaFieldReaders, foxgloveGrid);
+        this.#getRgbaFieldReaders(tempRgbaFieldReaders, foxgloveGrid);
         const { redReader, greenReader, blueReader, alphaReader } = tempRgbaFieldReaders;
         for (let y = 0; y < rows; y++) {
           for (let x = 0; x < cols; x++) {
@@ -346,7 +347,7 @@ export class FoxgloveGridRenderable extends Renderable<FoxgloveGridUserData> {
             }
           }
         }
-      } else {
+      } else if (settings.colorMode === "flat") {
         // flat
         const colorConverter = getColorConverter(
           settings as typeof settings & { colorMode: typeof settings.colorMode },
@@ -384,12 +385,21 @@ export class FoxgloveGridRenderable extends Renderable<FoxgloveGridUserData> {
 }
 
 export class FoxgloveGrid extends SceneExtension<FoxgloveGridRenderable> {
-  private fieldsByTopic = new Map<string, string[]>();
+  public static extensionId = "foxglove.Grid";
+  #fieldsByTopic = new Map<string, string[]>();
 
-  public constructor(renderer: Renderer) {
-    super("foxglove.Grid", renderer);
+  public constructor(renderer: IRenderer, name: string = FoxgloveGrid.extensionId) {
+    super(name, renderer);
+  }
 
-    renderer.addSchemaSubscriptions(GRID_DATATYPES, this.handleFoxgloveGrid);
+  public override getSubscriptions(): readonly AnyRendererSubscription[] {
+    return [
+      {
+        type: "schema",
+        schemaNames: GRID_DATATYPES,
+        subscription: { handler: this.#handleFoxgloveGrid },
+      },
+    ];
   }
 
   public override settingsNodes(): SettingsTreeEntry[] {
@@ -402,20 +412,28 @@ export class FoxgloveGrid extends SceneExtension<FoxgloveGridRenderable> {
       }
       const config = (configTopics[topic.name] ?? {}) as Partial<LayerSettingsFoxgloveGrid>;
 
-      const node = baseColorModeSettingsNode(
-        this.fieldsByTopic.get(topic.name) ?? [],
+      const colorModeFields = colorModeSettingsFields({
+        msgFields: this.#fieldsByTopic.get(topic.name),
         config,
-        topic,
-        DEFAULT_SETTINGS,
-        { supportsPackedRgbModes: false, supportsRgbaFieldsMode: true },
-      );
-      node.icon = "Cells";
-      node.fields.frameLocked = {
-        label: "Frame lock",
-        input: "boolean",
-        value: config.frameLocked ?? DEFAULT_SETTINGS.frameLocked,
+        defaults: DEFAULT_SETTINGS,
+        modifiers: { supportsPackedRgbModes: false, supportsRgbaFieldsMode: true },
+      });
+
+      const node: SettingsTreeNodeWithActionHandler = {
+        order: topic.name.toLocaleLowerCase(),
+        icon: "Cells",
+        visible: config.visible ?? DEFAULT_SETTINGS.visible,
+        fields: {
+          ...colorModeFields,
+          frameLocked: {
+            label: "Frame lock",
+            input: "boolean",
+            value: config.frameLocked ?? DEFAULT_SETTINGS.frameLocked,
+          },
+        },
+        handler,
       };
-      (node as SettingsTreeNodeWithActionHandler).handler = handler;
+
       entries.push({
         path: ["topics", topic.name],
         node,
@@ -456,14 +474,14 @@ export class FoxgloveGrid extends SceneExtension<FoxgloveGridRenderable> {
     }
   };
 
-  private handleFoxgloveGrid = (messageEvent: PartialMessageEvent<Grid>): void => {
+  #handleFoxgloveGrid = (messageEvent: PartialMessageEvent<Grid>): void => {
     const topic = messageEvent.topic;
     const foxgloveGrid = normalizeFoxgloveGrid(messageEvent.message);
     const receiveTime = toNanoSec(messageEvent.receiveTime);
 
     let renderable = this.renderables.get(topic);
 
-    if (!this._validateFoxgloveGrid(foxgloveGrid, messageEvent.topic)) {
+    if (!this.#validateFoxgloveGrid(foxgloveGrid, messageEvent.topic)) {
       if (renderable) {
         renderable.visible = false;
       }
@@ -478,7 +496,8 @@ export class FoxgloveGrid extends SceneExtension<FoxgloveGridRenderable> {
         | Partial<LayerSettingsFoxgloveGrid>
         | undefined;
       const settings = { ...DEFAULT_SETTINGS, ...userSettings };
-      if (settings.colorField == undefined) {
+      // only want to autoselect if it's in flatcolor mode (without colorfield) and previously didn't have fields
+      if (settings.colorField == undefined && this.#fieldsByTopic.get(topic) == undefined) {
         autoSelectColorField(settings, foxgloveGrid.fields, { supportsPackedRgbModes: false });
         // Update user settings with the newly selected color field
         this.renderer.updateConfig((draft) => {
@@ -521,14 +540,14 @@ export class FoxgloveGrid extends SceneExtension<FoxgloveGridRenderable> {
       this.renderables.set(topic, renderable);
     }
 
-    let fields = this.fieldsByTopic.get(topic);
+    let fields = this.#fieldsByTopic.get(topic);
     if (!fields || fields.length !== foxgloveGrid.fields.length) {
       fields = foxgloveGrid.fields.map((field) => field.name);
-      this.fieldsByTopic.set(topic, fields);
+      this.#fieldsByTopic.set(topic, fields);
       this.updateSettingsTree();
     }
 
-    this._updateFoxgloveGridRenderable(
+    this.#updateFoxgloveGridRenderable(
       renderable,
       foxgloveGrid,
       receiveTime,
@@ -536,7 +555,7 @@ export class FoxgloveGrid extends SceneExtension<FoxgloveGridRenderable> {
     );
   };
 
-  private _validateFoxgloveGrid(foxgloveGrid: Grid, topic: string): boolean {
+  #validateFoxgloveGrid(foxgloveGrid: Grid, topic: string): boolean {
     const { cell_stride, row_stride, column_count: cols } = foxgloveGrid;
     const rows = foxgloveGrid.data.byteLength / row_stride;
 
@@ -589,7 +608,7 @@ export class FoxgloveGrid extends SceneExtension<FoxgloveGridRenderable> {
   }
 
   /** @param foxgloveGrid must be validated already */
-  private _updateFoxgloveGridRenderable(
+  #updateFoxgloveGridRenderable(
     renderable: FoxgloveGridRenderable,
     foxgloveGrid: Grid,
     receiveTime: bigint,
@@ -619,7 +638,7 @@ function createGridGeometry(): THREE.PlaneGeometry {
   return geometry;
 }
 
-function invalidFoxgloveGridError(renderer: Renderer, topic: string, message: string): void {
+function invalidFoxgloveGridError(renderer: IRenderer, topic: string, message: string): void {
   renderer.settings.errors.addToTopic(topic, INVALID_FOXGLOVE_GRID, message);
 }
 
@@ -643,7 +662,7 @@ function createTexture(foxgloveGrid: Grid, settings: GridColorModeSettings): THR
     THREE.NearestFilter,
     THREE.LinearFilter,
     1,
-    getTextureEncoding(settings),
+    getTextureColorSpace(settings),
   );
   texture.generateMipmaps = false;
   return texture;
@@ -792,7 +811,7 @@ function createMaterial(texture: THREE.DataTexture, topic: string): GridShaderMa
       void main() {
         vec4 color = texture2D(map, vUv);
         if(colorMode == COLOR_MODE_RGBA) {
-          // input color is in sRGB, texture.encoding is sRGB, so no conversion is needed
+          // input color is in sRGB, texture.colorSpace is sRGB, so no conversion is needed
           gl_FragColor = color;
         } else if (colorMode == COLOR_MODE_FLAT) {
           // input color was already converted to linear by getColorConverter
@@ -828,7 +847,7 @@ function createMaterial(texture: THREE.DataTexture, topic: string): GridShaderMa
         if(PICKING == 1) {
           gl_FragColor = objectId;
         } else {
-          #include <encodings_fragment>
+          #include <colorspace_fragment>
         }
       }
     `,
@@ -899,3 +918,43 @@ const NumericTypeMinMaxValueMap: Record<NumericType, [number, number]> = {
   [NumericType.FLOAT32]: [0, 1.0],
   [NumericType.FLOAT64]: [0, 1.0],
 };
+
+function autoSelectColorField<Settings extends ColorModeSettings>(
+  output: Settings,
+  fields: PackedElementField[],
+  { supportsPackedRgbModes }: { supportsPackedRgbModes: boolean },
+): void {
+  // Prefer color fields first
+  if (supportsPackedRgbModes) {
+    for (const field of fields) {
+      const fieldNameLower = field.name.toLowerCase();
+      if (RGBA_PACKED_FIELDS.has(fieldNameLower)) {
+        output.colorField = field.name;
+        switch (fieldNameLower) {
+          case "rgb":
+            output.colorMode = "rgb";
+            break;
+          default:
+          case "rgba":
+            output.colorMode = "rgba";
+            break;
+        }
+        return;
+      }
+    }
+  }
+
+  if (hasSeparateRgbaFields(fields.map((f) => f.name))) {
+    output.colorMode = "rgba-fields";
+    return;
+  }
+
+  // Fall back to using the first field
+  if (fields.length > 0) {
+    const firstField = fields[0]!;
+    output.colorField = firstField.name;
+    output.colorMode = "colormap";
+    output.colorMap = "turbo";
+    return;
+  }
+}

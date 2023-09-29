@@ -14,10 +14,10 @@ import {
 import { ReactElement, useState } from "react";
 import { makeStyles } from "tss-react/mui";
 
+import { useSessionStorageValue } from "@foxglove/hooks";
 import { AppSetting } from "@foxglove/studio-base/AppSetting";
 import Stack from "@foxglove/studio-base/components/Stack";
 import { useAppConfigurationValue } from "@foxglove/studio-base/hooks";
-import { useSessionStorageValue } from "@foxglove/studio-base/hooks/useSessionStorageValue";
 import { LaunchPreferenceValue } from "@foxglove/studio-base/types/LaunchPreferenceValue";
 
 const useStyles = makeStyles()((theme) => ({
@@ -39,27 +39,20 @@ export function LaunchPreferenceScreen(): ReactElement {
   const [globalPreference, setGlobalPreference] = useAppConfigurationValue<string | undefined>(
     AppSetting.LAUNCH_PREFERENCE,
   );
-  const [_, setSessionPreference] = useSessionStorageValue(AppSetting.LAUNCH_PREFERENCE);
+  const [, setSessionPreference] = useSessionStorageValue(AppSetting.LAUNCH_PREFERENCE);
   const [rememberPreference, setRememberPreference] = useState(globalPreference != undefined);
 
   async function launchInWeb() {
     setSessionPreference(LaunchPreferenceValue.WEB); // always set session preference to allow overriding the URL param
-    if (rememberPreference) {
-      await setGlobalPreference(LaunchPreferenceValue.WEB);
-    }
+    await setGlobalPreference(rememberPreference ? LaunchPreferenceValue.WEB : undefined);
   }
 
   async function launchInDesktop() {
     setSessionPreference(LaunchPreferenceValue.DESKTOP); // always set session preference to allow overriding the URL param
-    if (rememberPreference) {
-      await setGlobalPreference(LaunchPreferenceValue.DESKTOP);
-    }
+    await setGlobalPreference(rememberPreference ? LaunchPreferenceValue.DESKTOP : undefined);
   }
 
-  async function toggleRememberPreference() {
-    if (rememberPreference) {
-      await setGlobalPreference(undefined);
-    }
+  function toggleRememberPreference() {
     setRememberPreference(!rememberPreference);
   }
 
@@ -94,14 +87,13 @@ export function LaunchPreferenceScreen(): ReactElement {
                 fullWidth
                 color="inherit"
                 variant="outlined"
-                size="large"
                 onClick={action.onClick}
               >
                 <Stack flex="auto" zeroMinWidth>
-                  <Typography component="div" variant="subtitle1" color="text.primary">
+                  <Typography variant="subtitle1" color="text.primary">
                     {action.primary}
                   </Typography>
-                  <Typography component="div" variant="body2" color="text.secondary">
+                  <Typography variant="body2" color="text.secondary">
                     {action.secondary}
                   </Typography>
                 </Stack>

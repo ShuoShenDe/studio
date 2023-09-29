@@ -2,50 +2,63 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import ClearIcon from "@mui/icons-material/Clear";
+import CancelIcon from "@mui/icons-material/Cancel";
 import SearchIcon from "@mui/icons-material/Search";
-import { AppBar, IconButton, TextField } from "@mui/material";
+import { IconButton, TextField } from "@mui/material";
 import memoizeWeak from "memoize-weak";
 import { useCallback, useMemo, useState } from "react";
-import { DeepReadonly } from "ts-essentials";
+import { useTranslation } from "react-i18next";
 import { makeStyles } from "tss-react/mui";
 
-import { SettingsTree, SettingsTreeAction, SettingsTreeField } from "@foxglove/studio";
+import { Immutable, SettingsTree, SettingsTreeAction, SettingsTreeField } from "@foxglove/studio";
 import { useConfigById } from "@foxglove/studio-base/PanelAPI";
 import { FieldEditor } from "@foxglove/studio-base/components/SettingsTreeEditor/FieldEditor";
 import Stack from "@foxglove/studio-base/components/Stack";
 import { useSelectedPanels } from "@foxglove/studio-base/context/CurrentLayoutContext";
 import { usePanelCatalog } from "@foxglove/studio-base/context/PanelCatalogContext";
 import { usePanelStateStore } from "@foxglove/studio-base/context/PanelStateContext";
-import { getPanelTypeFromId, PANEL_TITLE_CONFIG_KEY } from "@foxglove/studio-base/util/layout";
+import { PANEL_TITLE_CONFIG_KEY, getPanelTypeFromId } from "@foxglove/studio-base/util/layout";
 
 import { NodeEditor } from "./NodeEditor";
 import { filterTreeNodes, prepareSettingsNodes } from "./utils";
 
 const useStyles = makeStyles()((theme) => ({
   appBar: {
-    top: -1,
-    zIndex: theme.zIndex.appBar - 1,
-    borderBottom: `1px solid ${theme.palette.divider}`,
-    padding: theme.spacing(1),
+    top: 0,
+    marginRight: 1,
+    zIndex: theme.zIndex.appBar,
+    padding: theme.spacing(0.5),
+    position: "sticky",
+    backgroundColor: theme.palette.background.paper,
   },
   fieldGrid: {
     display: "grid",
     gridTemplateColumns: "minmax(20%, 20ch) auto",
     columnGap: theme.spacing(1),
   },
+  textField: {
+    ".MuiOutlinedInput-notchedOutline": {
+      border: "none",
+    },
+  },
+  startAdornment: {
+    display: "flex",
+  },
 }));
 
 const makeStablePath = memoizeWeak((key: string) => [key]);
 
 export default function SettingsTreeEditor({
+  variant,
   settings,
 }: {
-  settings: DeepReadonly<SettingsTree>;
+  variant: "panel" | "log";
+  settings: Immutable<SettingsTree>;
 }): JSX.Element {
   const { classes } = useStyles();
-  const { actionHandler } = settings;
+  const { actionHandler, focusedPath } = settings;
   const [filterText, setFilterText] = useState<string>("");
+  const { t } = useTranslation("settingsEditor");
 
   const filteredNodes = useMemo(() => {
     if (filterText.length > 0) {
@@ -82,11 +95,11 @@ export default function SettingsTreeEditor({
   const panelTitleField = useMemo<SettingsTreeField>(
     () => ({
       input: "string",
-      label: "Title",
+      label: t("title"),
       placeholder: defaultPanelTitle ?? panelInfo?.title,
       value: customPanelTitle,
     }),
-    [customPanelTitle, defaultPanelTitle, panelInfo?.title],
+    [customPanelTitle, defaultPanelTitle, panelInfo?.title, t],
   );
   const handleTitleChange = useCallback(
     (action: SettingsTreeAction) => {
@@ -102,29 +115,42 @@ export default function SettingsTreeEditor({
   return (
     <Stack fullHeight>
       {settings.enableFilter === true && (
-        <AppBar className={classes.appBar} position="sticky" color="default" elevation={0}>
+        <header className={classes.appBar}>
           <TextField
-            data-testid="settings-filter-field"
-            onChange={(event) => setFilterText(event.target.value)}
-            value={filterText}
+            id={`${variant}-settings-filter`}
             variant="filled"
+            onChange={(event) => {
+              setFilterText(event.target.value);
+            }}
+            value={filterText}
+            className={classes.textField}
             fullWidth
-            placeholder="Filter"
+            placeholder={t("searchPanelSettings")}
+            inputProps={{
+              "data-testid": `${variant}-settings-filter-input`,
+            }}
             InputProps={{
-              startAdornment: <SearchIcon fontSize="small" />,
+              size: "small",
+              startAdornment: (
+                <label className={classes.startAdornment} htmlFor="settings-filter">
+                  <SearchIcon fontSize="small" />
+                </label>
+              ),
               endAdornment: filterText && (
                 <IconButton
                   size="small"
-                  title="Clear search"
-                  onClick={() => setFilterText("")}
+                  title={t("clearSearch")}
+                  onClick={() => {
+                    setFilterText("");
+                  }}
                   edge="end"
                 >
-                  <ClearIcon fontSize="small" />
+                  <CancelIcon fontSize="small" />
                 </IconButton>
               ),
             }}
           />
-        </AppBar>
+        </header>
       )}
       <div className={classes.fieldGrid}>
         {showTitleField && (
@@ -143,6 +169,7 @@ export default function SettingsTreeEditor({
             actionHandler={actionHandler}
             defaultOpen={root.defaultExpansionState === "collapsed" ? false : true}
             filter={filterText}
+            focusedPath={focusedPath}
             path={makeStablePath(key)}
             settings={root}
           />

@@ -5,6 +5,9 @@
 export const FRAME_TRANSFORM_DATATYPES = new Set<string>();
 addFoxgloveSchema(FRAME_TRANSFORM_DATATYPES, "foxglove.FrameTransform");
 
+export const FRAME_TRANSFORMS_DATATYPES = new Set<string>();
+addFoxgloveSchema(FRAME_TRANSFORMS_DATATYPES, "foxglove.FrameTransforms");
+
 export const POINTCLOUD_DATATYPES = new Set<string>();
 addFoxgloveSchema(POINTCLOUD_DATATYPES, "foxglove.PointCloud");
 
@@ -32,10 +35,13 @@ addFoxgloveSchema(POSES_IN_FRAME_DATATYPES, "foxglove.PosesInFrame");
 export const GRID_DATATYPES = new Set<string>();
 addFoxgloveSchema(GRID_DATATYPES, "foxglove.Grid");
 
-// Expand a single Foxglove dataType into variations for ROS1 and ROS2 then add
-// them to the given output set
+export const IMAGE_ANNOTATIONS_DATATYPES = new Set<string>();
+addFoxgloveSchema(IMAGE_ANNOTATIONS_DATATYPES, "foxglove.ImageAnnotations");
+
+// Expand a single Foxglove schema name into variations for ROS1, ROS2, and IDL and add
+// them to the output set.
 function addFoxgloveSchema(output: Set<string>, dataType: string): Set<string> {
-  // Add the Foxglove variation: foxglove.PointCloud
+  // Add the Foxglove json, protobuf, and flatbuffer variation: foxglove.PointCloud
   output.add(dataType);
 
   const parts = dataType.split(".");
@@ -49,6 +55,9 @@ function addFoxgloveSchema(output: Set<string>, dataType: string): Set<string> {
 
   // Add the ROS2 variation: foxglove_msgs/msg/PointCloud
   output.add(`foxglove_msgs/msg/${leaf}`);
+
+  // Add the IDL variation: foxglove::PointCloud
+  output.add(`foxglove::${leaf}`);
 
   return output;
 }

@@ -11,9 +11,11 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { Stack } from "@mui/material";
-import { storiesOf } from "@storybook/react";
+import { useTheme } from "@mui/material";
+import { StoryFn, StoryObj } from "@storybook/react";
+import { PropsWithChildren } from "react";
 
+import Stack from "@foxglove/studio-base/components/Stack";
 import PanelSetup from "@foxglove/studio-base/stories/PanelSetup";
 import { PointCloud2 } from "@foxglove/studio-base/types/Messages";
 
@@ -26,59 +28,21 @@ const markerObject = {
   ns: "",
   text: "hello\nthere",
   type: 0,
-  scale: {
-    x: 2,
-    y: 2,
-    z: 4,
-  },
-  color: {
-    r: 1,
-    g: 0.1,
-    b: 0,
-    a: 0.7,
-  },
+  scale: { x: 2, y: 2, z: 4 },
+  orientation: { x: 0, y: 0, z: Math.sin(Math.PI / 8), w: Math.cos(Math.PI / 8) },
+  color: { r: 1, g: 0.1, b: 0, a: 0.7 },
   pose: {
-    position: {
-      x: -1,
-      y: 1,
-      z: -5,
-    },
-    orientation: {
-      x: 0,
-      y: 0,
-      z: 0,
-      w: 1,
-    },
+    position: { x: -1, y: 1, z: -5 },
+    orientation: { x: 0, y: 0, z: 0, w: 1 },
   },
 };
 
-// ts-prune-ignore-next
 export const POINT_CLOUD_MESSAGE: PointCloud2 = {
   fields: [
-    {
-      name: "x",
-      offset: 0,
-      datatype: 7,
-      count: 1,
-    },
-    {
-      name: "y",
-      offset: 4,
-      datatype: 7,
-      count: 1,
-    },
-    {
-      name: "z",
-      offset: 8,
-      datatype: 7,
-      count: 1,
-    },
-    {
-      name: "rgb",
-      offset: 16,
-      datatype: 7,
-      count: 1,
-    },
+    { name: "x", offset: 0, datatype: 7, count: 1 },
+    { name: "y", offset: 4, datatype: 7, count: 1 },
+    { name: "z", offset: 8, datatype: 7, count: 1 },
+    { name: "rgb", offset: 16, datatype: 7, count: 1 },
   ],
   type: 102,
   pose: {
@@ -142,51 +106,15 @@ export const POINT_CLOUD_MESSAGE: PointCloud2 = {
   ]),
 };
 
-// ts-prune-ignore-next
 export const POINT_CLOUD_WITH_ADDITIONAL_FIELDS: PointCloud2 = {
   fields: [
-    {
-      name: "x",
-      offset: 0,
-      datatype: 7,
-      count: 1,
-    },
-    {
-      name: "y",
-      offset: 4,
-      datatype: 7,
-      count: 1,
-    },
-    {
-      name: "z",
-      offset: 8,
-      datatype: 7,
-      count: 1,
-    },
-    {
-      name: "foo",
-      offset: 12,
-      datatype: 2,
-      count: 1,
-    },
-    {
-      name: "bar",
-      offset: 13,
-      datatype: 4,
-      count: 1,
-    },
-    {
-      name: "baz",
-      offset: 15,
-      datatype: 5,
-      count: 1,
-    },
-    {
-      name: "foo16_some_really_really_long_name",
-      offset: 19,
-      datatype: 3,
-      count: 1,
-    },
+    { name: "x", offset: 0, datatype: 7, count: 1 },
+    { name: "y", offset: 4, datatype: 7, count: 1 },
+    { name: "z", offset: 8, datatype: 7, count: 1 },
+    { name: "foo", offset: 12, datatype: 2, count: 1 },
+    { name: "bar", offset: 13, datatype: 4, count: 1 },
+    { name: "baz", offset: 15, datatype: 5, count: 1 },
+    { name: "foo16_some_really_really_long_name", offset: 19, datatype: 3, count: 1 },
   ],
   type: 102,
   pose: {
@@ -268,19 +196,12 @@ const sharedProps = {
   },
 };
 
-function PanelSetupWithData({
-  children,
-  title,
-  onMount,
-}: {
-  children: React.ReactNode;
-  title: React.ReactNode;
-  onMount?: (el: HTMLDivElement) => void;
-}) {
+function PanelSetupWithData(props: PropsWithChildren<{ title: React.ReactNode }>) {
+  const { children, title } = props;
   return (
     <PanelSetup
       omitDragAndDrop
-      style={{ width: "auto", height: "auto", display: "inline-flex" }}
+      style={{ width: "auto", height: "auto" }}
       fixture={{
         topics: [],
         datatypes: new Map(),
@@ -292,26 +213,45 @@ function PanelSetupWithData({
         },
       }}
     >
-      <div
-        style={{ margin: 16 }}
-        ref={(el) => {
-          if (el && onMount) {
-            onMount(el);
-          }
-        }}
-      >
+      <div>
         <p>{title}</p>
-        <Stack direction="row" flex="auto">
-          {children}
-        </Stack>
+        {children}
       </div>
     </PanelSetup>
   );
 }
 
-function DefaultStory() {
-  return (
-    <Stack direction="row" flexWrap="wrap" height="100%" bgcolor="background.paper">
+export default {
+  title: "panels/ThreeDeeRender/Interactions/Interaction",
+  parameters: {
+    chromatic: { viewport: { width: 1001, height: 1101 } },
+    colorScheme: "both-column",
+  },
+  excludeStories: ["POINT_CLOUD_MESSAGE", "POINT_CLOUD_WITH_ADDITIONAL_FIELDS"],
+  decorators: [
+    (Story: StoryFn): JSX.Element => {
+      const theme = useTheme();
+
+      return (
+        <Stack
+          fullHeight
+          fullWidth
+          direction="row"
+          flexWrap="wrap"
+          gap={4}
+          padding={2}
+          style={{ background: theme.palette.background.paper }}
+        >
+          <Story />
+        </Stack>
+      );
+    },
+  ],
+};
+
+export const Default: StoryObj = {
+  render: () => (
+    <>
       <PanelSetupWithData title="Default without clicked object">
         <Interactions
           {...(sharedProps as any)}
@@ -322,17 +262,12 @@ function DefaultStory() {
       <PanelSetupWithData title="With interactionData">
         <Interactions {...(sharedProps as any)} />
       </PanelSetupWithData>
-    </Stack>
-  );
-}
+    </>
+  ),
+};
 
-storiesOf("panels/ThreeDeeRender/Interactions/Interaction", module)
-  .addParameters({
-    chromatic: { viewport: { width: 1001, height: 1101 } },
-  })
-  .add("default", DefaultStory, { colorScheme: "dark" })
-  .add("default light", DefaultStory, { colorScheme: "light" })
-  .add("PointCloud", () => {
+export const PointCloud: StoryObj = {
+  render: () => {
     const cloud1 = { ...selectedObject.object, ...POINT_CLOUD_MESSAGE };
     const cloud2 = {
       ...selectedObject.object,
@@ -340,7 +275,7 @@ storiesOf("panels/ThreeDeeRender/Interactions/Interaction", module)
     };
 
     return (
-      <Stack direction="row" flexWrap="wrap" height="100%" bgcolor="background.paper">
+      <>
         <PanelSetupWithData title="default with point color">
           <Interactions
             {...(sharedProps as any)}
@@ -370,6 +305,7 @@ storiesOf("panels/ThreeDeeRender/Interactions/Interaction", module)
             }}
           />
         </PanelSetupWithData>
-      </Stack>
+      </>
     );
-  });
+  },
+};

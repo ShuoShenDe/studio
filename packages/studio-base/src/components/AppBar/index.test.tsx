@@ -9,26 +9,27 @@ import MockMessagePipelineProvider from "@foxglove/studio-base/components/Messag
 import MultiProvider from "@foxglove/studio-base/components/MultiProvider";
 import StudioToastProvider from "@foxglove/studio-base/components/StudioToastProvider";
 import AppConfigurationContext from "@foxglove/studio-base/context/AppConfigurationContext";
-import ConsoleApiContext from "@foxglove/studio-base/context/ConsoleApiContext";
 import { UserNodeStateProvider } from "@foxglove/studio-base/context/UserNodeStateContext";
+import MockCurrentLayoutProvider from "@foxglove/studio-base/providers/CurrentLayoutProvider/MockCurrentLayoutProvider";
 import TimelineInteractionStateProvider from "@foxglove/studio-base/providers/TimelineInteractionStateProvider";
-import ConsoleApi from "@foxglove/studio-base/services/ConsoleApi";
+import WorkspaceContextProvider from "@foxglove/studio-base/providers/WorkspaceContextProvider";
+import ThemeProvider from "@foxglove/studio-base/theme/ThemeProvider";
 import { makeMockAppConfiguration } from "@foxglove/studio-base/util/makeMockAppConfiguration";
 
 import { AppBar } from ".";
 
-const fakeConsoleApi = new ConsoleApi("");
-
-function Wrapper({ children }: React.PropsWithChildren<unknown>): JSX.Element {
+function Wrapper({ children }: React.PropsWithChildren): JSX.Element {
   const appConfiguration = makeMockAppConfiguration();
   const providers = [
     /* eslint-disable react/jsx-key */
+    <WorkspaceContextProvider />,
     <AppConfigurationContext.Provider value={appConfiguration} />,
     <StudioToastProvider />,
     <TimelineInteractionStateProvider />,
     <UserNodeStateProvider />,
     <MockMessagePipelineProvider />,
-    <ConsoleApiContext.Provider value={fakeConsoleApi} />,
+    <MockCurrentLayoutProvider />,
+    <ThemeProvider isDark />,
     /* eslint-enable react/jsx-key */
   ];
   return <MultiProvider providers={providers}>{children}</MultiProvider>;

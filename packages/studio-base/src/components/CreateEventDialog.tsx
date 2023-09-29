@@ -19,7 +19,7 @@ import {
   IconButton,
   ButtonGroup,
 } from "@mui/material";
-import { countBy } from "lodash";
+import * as _ from "lodash-es";
 import { KeyboardEvent, useCallback } from "react";
 import { useAsyncFn } from "react-use";
 import { keyframes } from "tss-react";
@@ -33,7 +33,7 @@ import {
   useMessagePipeline,
 } from "@foxglove/studio-base/components/MessagePipeline";
 import Stack from "@foxglove/studio-base/components/Stack";
-import { useConsoleApi } from "@foxglove/studio-base/context/ConsoleApiContext";
+import { useAppContext } from "@foxglove/studio-base/context/AppContext";
 import { EventsStore, useEvents } from "@foxglove/studio-base/context/EventsContext";
 import { useAppTimeFormat } from "@foxglove/studio-base/hooks";
 
@@ -66,7 +66,7 @@ const useStyles = makeStyles<void, "toggleButton">()((theme, _params, classes) =
     lineHeight: 1,
   },
   toggleButtonGroup: {
-    marginRight: theme.spacing(-1),
+    marginRight: theme.spacing(-0.5),
     gap: theme.spacing(0.25),
 
     [`.${classes.toggleButton}`]: {
@@ -81,12 +81,12 @@ type KeyValue = { key: string; value: string };
 
 const selectCurrentTime = (ctx: MessagePipelineContext) => ctx.playerState.activeData?.currentTime;
 const selectRefreshEvents = (store: EventsStore) => store.refreshEvents;
+const selectDeviceId = (store: EventsStore) => store.deviceId;
 
-export function CreateEventDialog(props: { deviceId: string; onClose: () => void }): JSX.Element {
-  const { deviceId, onClose } = props;
+export function CreateEventDialog(props: { onClose: () => void }): JSX.Element {
+  const { onClose } = props;
 
   const { classes } = useStyles();
-  const consoleApi = useConsoleApi();
 
   const refreshEvents = useEvents(selectRefreshEvents);
   const currentTime = useMessagePipeline(selectCurrentTime);
@@ -124,15 +124,18 @@ export function CreateEventDialog(props: { deviceId: string; onClose: () => void
   );
 
   const { formatTime } = useAppTimeFormat();
+  const { createEvent: appModuleCreateEvent } = useAppContext();
 
-  const countedMetadata = countBy(event.metadataEntries, (kv) => kv.key);
+  const countedMetadata = _.countBy(event.metadataEntries, (kv) => kv.key);
   const duplicateKey = Object.entries(countedMetadata).find(
     ([key, count]) => key.length > 0 && count > 1,
   );
   const canSubmit = event.startTime != undefined && event.duration != undefined && !duplicateKey;
 
+  const deviceId = useEvents(selectDeviceId);
+
   const [createdEvent, createEvent] = useAsyncFn(async () => {
-    if (event.startTime == undefined || event.duration == undefined) {
+    if (event.startTime == undefined || event.duration == undefined || deviceId == undefined) {
       return;
     }
 
@@ -142,7 +145,8 @@ export function CreateEventDialog(props: { deviceId: string; onClose: () => void
     const keyedMetadata = Object.fromEntries(
       filteredMeta.map((entry) => [entry.key.trim(), entry.value.trim()]),
     );
-    await consoleApi.createEvent({
+
+    await appModuleCreateEvent?.({
       deviceId,
       timestamp: event.startTime.toISOString(),
       durationNanos: toNanoSec(
@@ -152,14 +156,17 @@ export function CreateEventDialog(props: { deviceId: string; onClose: () => void
       ).toString(),
       metadata: keyedMetadata,
     });
+
     onClose();
     refreshEvents();
-  }, [consoleApi, deviceId, event, onClose, refreshEvents]);
+  }, [appModuleCreateEvent, deviceId, event, onClose, refreshEvents]);
 
   const onMetaDataKeyDown = useCallback(
     (keyboardEvent: KeyboardEvent) => {
       if (keyboardEvent.key === "Enter") {
-        createEvent().catch((error) => log.error(error));
+        createEvent().catch((error) => {
+          log.error(error);
+        });
       }
     },
     [createEvent],
@@ -247,7 +254,7 @@ export function CreateEventDialog(props: { deviceId: string; onClose: () => void
         <FormLabel>Metadata</FormLabel>
         <div className={classes.grid}>
           {event.metadataEntries.map(({ key, value }, index) => {
-            const hasDuplicate = ((key.length > 0 && countedMetadata[key]) ?? 0) > 1;
+            const hasDuplicate = ((key.length > 0 ? countedMetadata[key] : undefined) ?? 0) > 1;
             return (
               <div className={classes.row} key={index}>
                 <TextField
@@ -257,7 +264,9 @@ export function CreateEventDialog(props: { deviceId: string; onClose: () => void
                   placeholder="Key (string)"
                   error={hasDuplicate}
                   onKeyDown={onMetaDataKeyDown}
-                  onChange={(evt) => updateMetadata(index, "key", evt.currentTarget.value)}
+                  onChange={(evt) => {
+                    updateMetadata(index, "key", evt.currentTarget.value);
+                  }}
                 />
                 <TextField
                   fullWidth
@@ -265,15 +274,24 @@ export function CreateEventDialog(props: { deviceId: string; onClose: () => void
                   placeholder="Value (string)"
                   error={hasDuplicate}
                   onKeyDown={onMetaDataKeyDown}
-                  onChange={(evt) => updateMetadata(index, "value", evt.currentTarget.value)}
+                  onChange={(evt) => {
+                    updateMetadata(index, "value", evt.currentTarget.value);
+                  }}
                 />
                 <ButtonGroup>
-                  <IconButton tabIndex={-1} onClick={() => addRow(index)}>
+                  <IconButton
+                    tabIndex={-1}
+                    onClick={() => {
+                      addRow(index);
+                    }}
+                  >
                     <AddIcon />
                   </IconButton>
                   <IconButton
                     tabIndex={-1}
-                    onClick={() => removeRow(index)}
+                    onClick={() => {
+                      removeRow(index);
+                    }}
                     style={{ visibility: event.metadataEntries.length > 1 ? "visible" : "hidden" }}
                   >
                     <RemoveIcon />
@@ -285,12 +303,11 @@ export function CreateEventDialog(props: { deviceId: string; onClose: () => void
         </div>
       </Stack>
       <DialogActions>
-        <Button variant="outlined" size="large" onClick={onClose}>
+        <Button variant="outlined" onClick={onClose}>
           Cancel
         </Button>
         <Button
           variant="contained"
-          size="large"
           onClick={createEvent}
           disabled={!canSubmit || createdEvent.loading}
         >

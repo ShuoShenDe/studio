@@ -12,26 +12,30 @@
 //   You may not use this file except in compliance with the License.
 
 import { useTheme } from "@mui/material";
+// @ts-expect-error ICodeEditorService does not have type information in the monaco-editor package
+import { ICodeEditorService } from "monaco-editor/esm/vs/editor/browser/services/codeEditorService";
 import * as monacoApi from "monaco-editor/esm/vs/editor/editor.api";
-// @ts-expect-error StaticServices does not have type information in the monaco-editor package
-import { StaticServices } from "monaco-editor/esm/vs/editor/standalone/browser/standaloneServices";
+// @ts-expect-error StandaloneService does not have type information in the monaco-editor package
+import { StandaloneServices } from "monaco-editor/esm/vs/editor/standalone/browser/standaloneServices";
 import * as path from "path";
-import { ReactElement, useCallback, useRef } from "react";
+import { ReactElement, useCallback, useEffect, useRef } from "react";
 import MonacoEditor, { EditorDidMount, EditorWillMount } from "react-monaco-editor";
 import { useResizeDetector } from "react-resize-detector";
+import { useLatest } from "react-use";
+import { ModuleResolutionKind } from "typescript";
 
 import getPrettifiedCode from "@foxglove/studio-base/panels/NodePlayground/getPrettifiedCode";
 import { Script } from "@foxglove/studio-base/panels/NodePlayground/script";
-import { getNodeProjectConfig } from "@foxglove/studio-base/players/UserNodePlayer/nodeTransformerWorker/typescript/projectConfig";
+import { getUserScriptProjectConfig } from "@foxglove/studio-base/players/UserNodePlayer/nodeTransformerWorker/typescript/projectConfig";
 import inScreenshotTests from "@foxglove/studio-base/stories/inScreenshotTests";
 import { DEFAULT_STUDIO_NODE_PREFIX } from "@foxglove/studio-base/util/globalConstants";
 import { mightActuallyBePartial } from "@foxglove/studio-base/util/mightActuallyBePartial";
 
 import { themes } from "./theme";
 
-const codeEditorService = StaticServices.codeEditorService.get();
+const codeEditorService = StandaloneServices.get(ICodeEditorService);
 
-type CodeEditor = monacoApi.editor.IStandaloneCodeEditor;
+type CodeEditor = monacoApi.editor.ICodeEditor;
 
 type Props = {
   script?: Script;
@@ -73,7 +77,7 @@ const gotoSelection = (editor: monacoApi.editor.IEditor, selection?: monacoApi.I
   }
 };
 
-const projectConfig = getNodeProjectConfig();
+const projectConfig = getUserScriptProjectConfig();
 const Editor = ({
   autoFormatOnSave,
   script,
@@ -100,7 +104,7 @@ const Editor = ({
   }, [rosLib]);
 
   React.useEffect(() => {
-    const filePath = monacoApi.Uri.parse(`file:///studio_script/generatedTypes.ts`);
+    const filePath = monacoApi.Uri.parse(`file://${DEFAULT_STUDIO_NODE_PREFIX}generatedTypes.ts`);
     const model =
       monacoApi.editor.getModel(filePath) ??
       monacoApi.editor.createModel(typesLib, "typescript", filePath);
@@ -110,40 +114,52 @@ const Editor = ({
   }, [typesLib]);
 
   /*
-  In order to support go-to across files we override the code editor service doOpenEditor method.
-  Default implementation checks if the requested resource is the current model and no ops if it isn't.
+  In order to support go-to across files we register an "open handler" for the code editor service.
   Our implementation looks across all of our models to find the one requested and then queues that as
   an override along with the requested selection (containing line # etc). When we're told to load
   this override script we'll end up loading the model in the useEffect below, and then using this
   selection to move to the correct line.
   */
-  codeEditorService.doOpenEditor = React.useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (editor: monacoApi.editor.ICodeEditor, input: any) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      const requestedModel = monacoApi.editor.getModel(input.resource);
-      if (!requestedModel) {
-        return editor;
-      }
-
-      // If we are jumping to a definition within the user node, don't push
-      // to script override.
-      if (requestedModel.uri.path === script?.filePath) {
+  useEffect(() => {
+    const disposable = codeEditorService.registerCodeEditorOpenHandler(
+      async (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        input: any,
+        // eslint-disable-next-line no-restricted-syntax
+        editor: monacoApi.editor.ICodeEditor | null,
+        // eslint-disable-next-line no-restricted-syntax
+      ): Promise<monacoApi.editor.ICodeEditor | null> => {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        gotoSelection(editor, input.options.selection);
-        return;
-      }
+        const requestedModel = monacoApi.editor.getModel(input.resource);
+        if (!requestedModel) {
+          return editor;
+        }
 
-      setScriptOverride({
-        filePath: requestedModel.uri.path,
-        code: requestedModel.getValue(),
-        readOnly: true,
-        selection: input.options?.selection,
-      });
-      return editor;
-    },
-    [script, setScriptOverride],
-  );
+        // If we are jumping to a definition within the user node, don't push
+        // to script override.
+        if (
+          editor &&
+          script &&
+          requestedModel.uri.path ===
+            `${DEFAULT_STUDIO_NODE_PREFIX}${path.basename(script.filePath)}`
+        ) {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+          gotoSelection(editor, input.options.selection);
+          // eslint-disable-next-line no-restricted-syntax
+          return null;
+        }
+
+        setScriptOverride({
+          filePath: requestedModel.uri.path,
+          code: requestedModel.getValue(),
+          readOnly: true,
+          selection: input.options?.selection,
+        });
+        return editor;
+      },
+    );
+    return () => disposable.dispose();
+  }, [script, setScriptOverride]);
 
   React.useEffect(() => {
     const editor = editorRef.current;
@@ -225,12 +241,25 @@ const Editor = ({
       // this way (instead of specifying it in the compiler options)
       // is a hack to overwrite the default type defs since the
       // typescript language service does not expose such a method.
-      projectConfig.declarations.forEach((lib) =>
-        monaco.languages.typescript.typescriptDefaults.addExtraLib(
-          lib.sourceCode,
-          `file:///node_modules/@types/${lib.fileName}`,
-        ),
-      );
+      projectConfig.declarations.forEach((lib) => {
+        if (lib.fileName.startsWith("@foxglove/schemas")) {
+          monaco.languages.typescript.typescriptDefaults.addExtraLib(
+            lib.sourceCode,
+            `file:///node_modules/${lib.fileName}`,
+          );
+        } else {
+          monaco.languages.typescript.typescriptDefaults.addExtraLib(
+            lib.sourceCode,
+            `file:///node_modules/@types/${lib.fileName}`,
+          );
+        }
+      });
+      monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+        ...monaco.languages.typescript.typescriptDefaults.getCompilerOptions(),
+        // This is needed for @foxglove/schemas to resolve correctly in the editor.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        moduleResolution: ModuleResolutionKind.NodeNext as any,
+      });
       projectConfig.utilityFiles.forEach((sourceFile) => {
         const filePath = monacoApi.Uri.parse(`file://${sourceFile.filePath}`);
         const model =
@@ -264,7 +293,7 @@ const Editor = ({
     if (model && script && !script.readOnly) {
       // We have to use a ref for autoFormatOnSaveRef because of how monaco scopes the action callbacks
       if (autoFormatOnSaveRef.current) {
-        await editorRef.current?.getAction("editor.action.formatDocument").run();
+        await editorRef.current?.getAction("editor.action.formatDocument")?.run();
       }
       save(model.getValue());
     }
@@ -281,11 +310,21 @@ const Editor = ({
 
       // Because this didMount function only runs once, we need to store the saveCode function in a
       // ref so the command can always access the latest version.
-      run: async () => await saveCodeRef.current(),
+      run: async () => {
+        await saveCodeRef.current();
+      },
     });
   }, []);
 
-  const onChange = React.useCallback((srcCode: string) => setScriptCode(srcCode), [setScriptCode]);
+  // Refer to setScriptCode by reference so that the onChange callback isn't invalidated
+  // on every edit.
+  const latestSetScriptCode = useLatest(setScriptCode);
+  const onChange = useCallback(
+    (srcCode: string) => {
+      latestSetScriptCode.current(srcCode);
+    },
+    [latestSetScriptCode],
+  );
 
   const onResize = useCallback((width?: number, height?: number) => {
     if (width != undefined && height != undefined) {

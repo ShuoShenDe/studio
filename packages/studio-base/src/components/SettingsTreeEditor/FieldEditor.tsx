@@ -2,116 +2,104 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import ClearIcon from "@mui/icons-material/Clear";
+import CancelIcon from "@mui/icons-material/Cancel";
 import ErrorIcon from "@mui/icons-material/Error";
 import {
   Autocomplete,
+  MenuItem,
+  MenuList,
+  MenuListProps,
+  Select,
+  TextField,
   ToggleButton,
   ToggleButtonGroup,
-  Typography,
-  List,
-  MenuItem,
-  Select,
   Tooltip,
-  TextField,
-  ListProps,
+  Typography,
 } from "@mui/material";
-import { DeepReadonly } from "ts-essentials";
 import { makeStyles } from "tss-react/mui";
 import { v4 as uuid } from "uuid";
 
-import { SettingsTreeAction, SettingsTreeField } from "@foxglove/studio";
+import { Immutable, SettingsTreeAction, SettingsTreeField } from "@foxglove/studio";
 import MessagePathInput from "@foxglove/studio-base/components/MessagePathSyntax/MessagePathInput";
 import Stack from "@foxglove/studio-base/components/Stack";
 
-import { ColorPickerInput, ColorGradientInput, NumberInput, Vec3Input, Vec2Input } from "./inputs";
+import { ColorGradientInput, ColorPickerInput, NumberInput, Vec2Input, Vec3Input } from "./inputs";
 
-// Used to both undefined and empty string in select inputs.
+/** Used to allow both undefined and empty string in select inputs. */
 const UNDEFINED_SENTINEL_VALUE = uuid();
+/** Used to avoid MUI errors when an invalid option is selected */
+const INVALID_SENTINEL_VALUE = uuid();
 
-const useStyles = makeStyles<void, "error">()((theme, _params, classes) => {
-  const prefersDarkMode = theme.palette.mode === "dark";
-  const inputBackgroundColor = prefersDarkMode
-    ? "rgba(255, 255, 255, 0.09)"
-    : "rgba(0, 0, 0, 0.06)";
+const useStyles = makeStyles<void, "error">()((theme, _params, classes) => ({
+  autocomplete: {
+    ".MuiInputBase-root.MuiInputBase-sizeSmall": {
+      paddingInline: 0,
+      paddingBlock: theme.spacing(0.3125),
+    },
+  },
+  clearIndicator: {
+    marginRight: theme.spacing(-0.25),
+    opacity: theme.palette.action.disabledOpacity,
 
-  return {
-    error: {},
-    fieldLabel: {
-      color: theme.palette.text.secondary,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
+    ":hover": {
+      background: "transparent",
+      opacity: 1,
     },
-    fieldWrapper: {
-      minWidth: theme.spacing(14),
-      marginRight: theme.spacing(1.25),
-      [`&.${classes.error}`]: {
-        ".MuiInputBase-root": {
-          outline: `1px ${theme.palette.error.main} solid`,
-          outlineOffset: -1,
-        },
-      },
+  },
+  error: {},
+  fieldLabel: {
+    color: theme.palette.text.secondary,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  fieldWrapper: {
+    minWidth: theme.spacing(14),
+    marginRight: theme.spacing(0.5),
+    [`&.${classes.error} .MuiInputBase-root, .MuiInputBase-root.${classes.error}`]: {
+      outline: `1px ${theme.palette.error.main} solid`,
+      outlineOffset: -1,
     },
-    multiLabelWrapper: {
-      display: "grid",
-      gridTemplateColumns: "1fr auto",
-      columnGap: theme.spacing(0.5),
-      height: "100%",
-      width: "100%",
-      alignItems: "center",
-      textAlign: "end",
-    },
-    pseudoInputWrapper: {
-      padding: theme.spacing(0.75, 1),
+  },
+  multiLabelWrapper: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    columnGap: theme.spacing(0.5),
+    height: "100%",
+    width: "100%",
+    alignItems: "center",
+    textAlign: "end",
+  },
+  styledToggleButtonGroup: {
+    backgroundColor: theme.palette.action.hover,
+    gap: theme.spacing(0.25),
+    overflowX: "auto",
+
+    "& .MuiToggleButtonGroup-grouped": {
+      margin: theme.spacing(0.55),
       borderRadius: theme.shape.borderRadius,
-      fontSize: "0.75em",
-      backgroundColor: inputBackgroundColor,
+      paddingTop: 0,
+      paddingBottom: 0,
+      borderColor: "transparent !important",
+      lineHeight: 1.75,
 
-      input: {
-        height: "1.4375em",
-      },
-      "&:hover": {
-        backgroundColor: prefersDarkMode ? "rgba(255, 255, 255, 0.13)" : "rgba(0, 0, 0, 0.09)",
-        // Reset on touch devices, it doesn't add specificity
-        "@media (hover: none)": {
-          backgroundColor: inputBackgroundColor,
+      "&.Mui-selected": {
+        background: theme.palette.background.paper,
+        borderColor: "transparent",
+
+        "&:hover": {
+          borderColor: theme.palette.action.active,
         },
       },
-      "&:focus-within": {
-        backgroundColor: inputBackgroundColor,
-      },
-    },
-    styledToggleButtonGroup: {
-      backgroundColor: theme.palette.action.hover,
-      gap: theme.spacing(0.25),
-
-      "& .MuiToggleButtonGroup-grouped": {
-        margin: theme.spacing(0.55),
+      "&:not(:first-of-type)": {
         borderRadius: theme.shape.borderRadius,
-        paddingTop: 0,
-        paddingBottom: 0,
-        borderColor: "transparent !important",
-        lineHeight: 1.75,
-
-        "&.Mui-selected": {
-          background: theme.palette.background.paper,
-          borderColor: "transparent",
-
-          "&:hover": {
-            borderColor: theme.palette.action.active,
-          },
-        },
-        "&:not(:first-of-type)": {
-          borderRadius: theme.shape.borderRadius,
-        },
-        "&:first-of-type": {
-          borderRadius: theme.shape.borderRadius,
-        },
+      },
+      "&:first-of-type": {
+        borderRadius: theme.shape.borderRadius,
       },
     },
-  };
-});
+  },
+}));
 
 function FieldInput({
   actionHandler,
@@ -119,39 +107,49 @@ function FieldInput({
   path,
 }: {
   actionHandler: (action: SettingsTreeAction) => void;
-  field: DeepReadonly<SettingsTreeField>;
+  field: Immutable<SettingsTreeField>;
   path: readonly string[];
 }): JSX.Element {
-  const { classes } = useStyles();
+  const { classes, cx } = useStyles();
 
   switch (field.input) {
     case "autocomplete":
       return (
         <Autocomplete
+          className={classes.autocomplete}
           size="small"
           freeSolo={true}
           value={field.value}
           disabled={field.disabled}
           readOnly={field.readonly}
-          ListboxComponent={List}
-          ListboxProps={{ dense: true } as Partial<ListProps>}
+          ListboxComponent={MenuList}
+          ListboxProps={{ dense: true } as Partial<MenuListProps>}
           renderOption={(props, option, { selected }) => (
             <MenuItem selected={selected} {...props}>
               {option}
             </MenuItem>
           )}
-          componentsProps={{ clearIndicator: { size: "small" } }}
-          clearIcon={<ClearIcon fontSize="small" />}
-          renderInput={(params) => <TextField {...params} variant="filled" size="small" />}
-          onInputChange={(_event, value) =>
-            actionHandler({ action: "update", payload: { path, input: "autocomplete", value } })
-          }
-          onChange={(_event, value) =>
+          componentsProps={{
+            clearIndicator: {
+              size: "small",
+              className: classes.clearIndicator,
+            },
+          }}
+          clearIcon={<CancelIcon fontSize="small" />}
+          renderInput={(params) => (
+            <TextField {...params} variant="filled" size="small" placeholder={field.placeholder} />
+          )}
+          onInputChange={(_event, value, reason) => {
+            if (reason === "input") {
+              actionHandler({ action: "update", payload: { path, input: "autocomplete", value } });
+            }
+          }}
+          onChange={(_event, value) => {
             actionHandler({
               action: "update",
               payload: { path, input: "autocomplete", value: value ?? undefined },
-            })
-          }
+            });
+          }}
           options={field.items}
         />
       );
@@ -169,9 +167,9 @@ function FieldInput({
           min={field.min}
           precision={field.precision}
           step={field.step}
-          onChange={(value) =>
-            actionHandler({ action: "update", payload: { path, input: "number", value } })
-          }
+          onChange={(value) => {
+            actionHandler({ action: "update", payload: { path, input: "number", value } });
+          }}
         />
       );
     case "toggle":
@@ -184,7 +182,7 @@ function FieldInput({
           disabled={field.disabled}
           size="small"
           onChange={(_event, value) => {
-            if (field.readonly !== true) {
+            if (value != undefined && field.readonly !== true) {
               actionHandler({
                 action: "update",
                 payload: {
@@ -198,10 +196,10 @@ function FieldInput({
         >
           {field.options.map((opt) => (
             <ToggleButton
-              key={(typeof opt === "string" ? opt : opt.value) ?? UNDEFINED_SENTINEL_VALUE}
-              value={(typeof opt === "string" ? opt : opt.value) ?? UNDEFINED_SENTINEL_VALUE}
+              key={(typeof opt === "object" ? opt.value : opt) ?? UNDEFINED_SENTINEL_VALUE}
+              value={(typeof opt === "object" ? opt.value : opt) ?? UNDEFINED_SENTINEL_VALUE}
             >
-              {typeof opt === "string" ? opt : opt.label}
+              {typeof opt === "object" ? opt.label : opt}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
@@ -218,12 +216,12 @@ function FieldInput({
           InputProps={{
             readOnly: field.readonly,
           }}
-          onChange={(event) =>
+          onChange={(event) => {
             actionHandler({
               action: "update",
               payload: { path, input: "string", value: event.target.value },
-            })
-          }
+            });
+          }}
         />
       );
     case "boolean":
@@ -256,12 +254,12 @@ function FieldInput({
           readOnly={field.readonly}
           placeholder={field.placeholder}
           value={field.value?.toString()}
-          onChange={(value) =>
+          onChange={(value) => {
             actionHandler({
               action: "update",
               payload: { path, input: "rgb", value },
-            })
-          }
+            });
+          }}
           hideClearButton={field.hideClearButton}
         />
       );
@@ -273,50 +271,69 @@ function FieldInput({
           readOnly={field.readonly}
           placeholder={field.placeholder}
           value={field.value?.toString()}
-          onChange={(value) =>
+          onChange={(value) => {
             actionHandler({
               action: "update",
               payload: { path, input: "rgba", value },
-            })
-          }
+            });
+          }}
         />
       );
     case "messagepath":
       return (
-        <Stack className={classes.pseudoInputWrapper} direction="row">
-          <MessagePathInput
-            path={field.value ?? ""}
-            disabled={field.disabled}
-            readOnly={field.readonly}
-            onChange={(value) =>
-              actionHandler({
-                action: "update",
-                payload: { path, input: "messagepath", value },
-              })
-            }
-            validTypes={field.validTypes}
-          />
-        </Stack>
+        <MessagePathInput
+          variant="filled"
+          path={field.value ?? ""}
+          disabled={field.disabled}
+          readOnly={field.readonly}
+          supportsMathModifiers={field.supportsMathModifiers}
+          onChange={(value) => {
+            actionHandler({
+              action: "update",
+              payload: { path, input: "messagepath", value },
+            });
+          }}
+          validTypes={field.validTypes}
+        />
       );
-    case "select":
+    case "select": {
+      const selectedOptionIndex = // use findIndex instead of find to avoid confusing TypeScript with union of arrays
+        field.options.findIndex((option) => option.value === field.value);
+      const selectedOption = field.options[selectedOptionIndex];
+
+      const isEmpty = field.options.length === 0;
+      let selectValue = field.value;
+      if (!selectedOption) {
+        selectValue = INVALID_SENTINEL_VALUE;
+      } else if (selectValue == undefined) {
+        // We can't pass value={undefined} or we get a React error "A component is changing an
+        // uncontrolled input to be controlled" when changing the value to be non-undefined.
+        selectValue = UNDEFINED_SENTINEL_VALUE;
+      }
+
+      const hasError = !selectedOption && (!isEmpty || field.value != undefined);
       return (
         <Select
+          className={cx({ [classes.error]: hasError })}
           size="small"
           displayEmpty
           fullWidth
           disabled={field.disabled}
           readOnly={field.readonly}
           variant="filled"
-          value={field.value ?? UNDEFINED_SENTINEL_VALUE}
-          renderValue={(value) => {
+          value={selectValue}
+          renderValue={(_value) => {
+            // Use field.value rather than the passed-in value so we can render the value even when
+            // it was not present in the list of options.
+            const value = field.value;
             for (const option of field.options) {
               if (option.value === value) {
                 return option.label.trim();
               }
             }
-            return undefined;
+            return value;
           }}
-          onChange={(event) =>
+          onChange={(event) => {
             actionHandler({
               action: "update",
               payload: {
@@ -327,26 +344,31 @@ function FieldInput({
                     ? undefined
                     : (event.target.value as undefined | string | string[]),
               },
-            })
-          }
+            });
+          }}
           MenuProps={{ MenuListProps: { dense: true } }}
         >
-          {field.options.map(({ label, value = UNDEFINED_SENTINEL_VALUE }) => (
-            <MenuItem key={value} value={value}>
+          {field.options.map(({ label, value = UNDEFINED_SENTINEL_VALUE, disabled }) => (
+            <MenuItem key={value} value={value} disabled={disabled}>
               {label}
             </MenuItem>
           ))}
+          {isEmpty && <MenuItem disabled>No options</MenuItem>}
+          {!selectedOption && (
+            <MenuItem style={{ display: "none" }} value={INVALID_SENTINEL_VALUE} />
+          )}
         </Select>
       );
+    }
     case "gradient":
       return (
         <ColorGradientInput
           colors={field.value}
           disabled={field.disabled}
           readOnly={field.readonly}
-          onChange={(value) =>
-            actionHandler({ action: "update", payload: { path, input: "gradient", value } })
-          }
+          onChange={(value) => {
+            actionHandler({ action: "update", payload: { path, input: "gradient", value } });
+          }}
         />
       );
     case "vec3":
@@ -360,9 +382,9 @@ function FieldInput({
           readOnly={field.readonly}
           min={field.min}
           max={field.max}
-          onChange={(value) =>
-            actionHandler({ action: "update", payload: { path, input: "vec3", value } })
-          }
+          onChange={(value) => {
+            actionHandler({ action: "update", payload: { path, input: "vec3", value } });
+          }}
         />
       );
     case "vec2":
@@ -376,15 +398,15 @@ function FieldInput({
           readOnly={field.readonly}
           min={field.min}
           max={field.max}
-          onChange={(value) =>
-            actionHandler({ action: "update", payload: { path, input: "vec2", value } })
-          }
+          onChange={(value) => {
+            actionHandler({ action: "update", payload: { path, input: "vec2", value } });
+          }}
         />
       );
   }
 }
 
-function FieldLabel({ field }: { field: DeepReadonly<SettingsTreeField> }): JSX.Element {
+function FieldLabel({ field }: { field: Immutable<SettingsTreeField> }): JSX.Element {
   const { classes } = useStyles();
 
   if (field.input === "vec2") {
@@ -468,7 +490,7 @@ function FieldEditorComponent({
   path,
 }: {
   actionHandler: (action: SettingsTreeAction) => void;
-  field: DeepReadonly<SettingsTreeField>;
+  field: Immutable<SettingsTreeField>;
   path: readonly string[];
 }): JSX.Element {
   const indent = Math.min(path.length, 4);

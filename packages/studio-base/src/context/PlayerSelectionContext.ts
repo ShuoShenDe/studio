@@ -48,7 +48,7 @@ export interface IDataSourceFactory {
   disabledReason?: string | JSX.Element;
   badgeText?: string;
   hidden?: boolean;
-  warning?: string;
+  warning?: string | JSX.Element;
 
   sampleLayout?: LayoutData;
 

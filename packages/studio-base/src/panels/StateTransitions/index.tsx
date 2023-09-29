@@ -11,22 +11,23 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import AddIcon from "@mui/icons-material/Add";
-import ClearIcon from "@mui/icons-material/Clear";
-import { alpha, Button, IconButton } from "@mui/material";
+import { Add16Filled, Edit16Filled } from "@fluentui/react-icons";
+import { Button, Typography } from "@mui/material";
 import { ChartOptions, ScaleOptions } from "chart.js";
-import { uniq } from "lodash";
-import { useCallback, useMemo, useRef } from "react";
+import * as _ from "lodash-es";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useResizeDetector } from "react-resize-detector";
+import tinycolor from "tinycolor2";
 import { makeStyles } from "tss-react/mui";
 
+import { filterMap } from "@foxglove/den/collection";
 import { useShallowMemo } from "@foxglove/hooks";
 import { add as addTimes, fromSec, subtract as subtractTimes, toSec } from "@foxglove/rostime";
 import * as PanelAPI from "@foxglove/studio-base/PanelAPI";
-import { useBlocksByTopic } from "@foxglove/studio-base/PanelAPI";
-import MessagePathInput from "@foxglove/studio-base/components/MessagePathSyntax/MessagePathInput";
-import { getTopicsFromPaths } from "@foxglove/studio-base/components/MessagePathSyntax/parseRosPath";
-import { useDecodeMessagePathsForMessagesByTopic } from "@foxglove/studio-base/components/MessagePathSyntax/useCachedGetMessagePathDataItems";
+import {
+  MessageDataItemsByPath,
+  useDecodeMessagePathsForMessagesByTopic,
+} from "@foxglove/studio-base/components/MessagePathSyntax/useCachedGetMessagePathDataItems";
 import useMessagesByPath from "@foxglove/studio-base/components/MessagePathSyntax/useMessagesByPath";
 import {
   MessagePipelineContext,
@@ -34,25 +35,23 @@ import {
   useMessagePipelineGetter,
 } from "@foxglove/studio-base/components/MessagePipeline";
 import Panel from "@foxglove/studio-base/components/Panel";
-import PanelToolbar, {
-  PANEL_TOOLBAR_MIN_HEIGHT,
-} from "@foxglove/studio-base/components/PanelToolbar";
+import { usePanelContext } from "@foxglove/studio-base/components/PanelContext";
+import PanelToolbar from "@foxglove/studio-base/components/PanelToolbar";
 import Stack from "@foxglove/studio-base/components/Stack";
-import TimeBasedChart, {
-  TimeBasedChartTooltipData,
-} from "@foxglove/studio-base/components/TimeBasedChart";
-import TimestampMethodDropdown from "@foxglove/studio-base/components/TimestampMethodDropdown";
-import { usePanelMousePresence } from "@foxglove/studio-base/hooks/usePanelMousePresence";
-import {
-  ChartData,
-  OnClickArg as OnChartClickArgs,
-} from "@foxglove/studio-base/src/components/Chart";
+import TimeBasedChart from "@foxglove/studio-base/components/TimeBasedChart";
+import { ChartData, ChartDatasets } from "@foxglove/studio-base/components/TimeBasedChart/types";
+import { useSelectedPanels } from "@foxglove/studio-base/context/CurrentLayoutContext";
+import { useWorkspaceActions } from "@foxglove/studio-base/context/Workspace/useWorkspaceActions";
+import { subscribePayloadFromMessagePath } from "@foxglove/studio-base/players/subscribePayloadFromMessagePath";
+import { SubscribePayload } from "@foxglove/studio-base/players/types";
+import { OnClickArg as OnChartClickArgs } from "@foxglove/studio-base/src/components/Chart";
+import { Bounds } from "@foxglove/studio-base/types/Bounds";
 import { OpenSiblingPanel, PanelConfig, SaveConfig } from "@foxglove/studio-base/types/panels";
-import { fonts } from "@foxglove/studio-base/util/sharedStyleConstants";
-import { TimestampMethod } from "@foxglove/studio-base/util/time";
+import { fontMonospace } from "@foxglove/theme";
 
 import messagesToDatasets from "./messagesToDatasets";
 import { useStateTransitionsPanelSettings } from "./settings";
+import { DEFAULT_PATH, stateTransitionPathDisplayName } from "./shared";
 import { StateTransitionConfig } from "./types";
 
 export const transitionableRosTypes = [
@@ -69,49 +68,50 @@ export const transitionableRosTypes = [
   "json",
 ];
 
-const fontFamily = fonts.MONOSPACE;
 const fontSize = 10;
 const fontWeight = "bold";
+const EMPTY_ITEMS_BY_PATH: MessageDataItemsByPath = {};
 
 const useStyles = makeStyles()((theme) => ({
-  addButton: {
-    position: "absolute",
-    top: `calc(${PANEL_TOOLBAR_MIN_HEIGHT}px + ${theme.spacing(1)})`,
-    right: theme.spacing(0.5),
-    zIndex: 1,
-  },
-  clearButton: {
-    "&.MuiIconButton-root": {
-      padding: theme.spacing(0.125),
-    },
-  },
-  visibilityHidden: {
-    visibility: "hidden",
-  },
   chartWrapper: {
     position: "relative",
     marginTop: theme.spacing(0.5),
   },
+  chartOverlay: {
+    top: 0,
+    left: 0,
+    right: 0,
+    pointerEvents: "none",
+  },
   row: {
-    display: "grid",
-    position: "absolute",
-    alignItems: "center",
-    gridTemplateColumns: "auto minmax(min-content, 1fr) auto",
-    gap: theme.spacing(0.25),
-    paddingLeft: theme.spacing(0.25),
-    left: theme.spacing(0.5),
-    borderRadius: theme.shape.borderRadius,
+    paddingInline: theme.spacing(0.5),
+    pointerEvents: "none",
+  },
+  button: {
+    minWidth: "auto",
+    textAlign: "left",
+    pointerEvents: "auto",
+    fontWeight: "normal",
+    padding: theme.spacing(0, 1),
+    maxWidth: "100%",
 
-    ".MuiIconButton-root": {
-      visibility: "hidden",
-    },
-    "&:hover, &:focus-within": {
-      backgroundColor: alpha(theme.palette.background.paper, 0.67),
+    "&:hover": {
+      backgroundColor: tinycolor(theme.palette.background.paper).setAlpha(0.67).toString(),
       backgroundImage: `linear-gradient(to right, ${theme.palette.action.focus}, ${theme.palette.action.focus})`,
+    },
+    ".MuiButton-endIcon": {
+      opacity: 0.8,
+      fontSize: 14,
+      marginLeft: theme.spacing(0.5),
 
-      ".MuiIconButton-root": {
-        visibility: "visible",
+      svg: {
+        fontSize: "1em",
+        height: "1em",
+        width: "1em",
       },
+    },
+    ":not(:hover) .MuiButton-endIcon": {
+      display: "none",
     },
   },
 }));
@@ -124,7 +124,7 @@ const plugins: ChartOptions["plugins"] = {
     offset: 0,
     clip: true,
     font: {
-      family: fontFamily,
+      family: fontMonospace,
       size: fontSize,
       weight: fontWeight,
     },
@@ -155,7 +155,7 @@ export function openSiblingStateTransitionsPanel(
     siblingConfigCreator: (config: PanelConfig) => {
       return {
         ...config,
-        paths: uniq(
+        paths: _.uniq(
           (config as StateTransitionConfig).paths.concat([
             { value: topicName, timestampMethod: "receiveTime" },
           ]),
@@ -169,6 +169,10 @@ function selectCurrentTime(ctx: MessagePipelineContext) {
   return ctx.playerState.activeData?.currentTime;
 }
 
+function selectEndTime(ctx: MessagePipelineContext) {
+  return ctx.playerState.activeData?.endTime;
+}
+
 type Props = {
   config: StateTransitionConfig;
   saveConfig: SaveConfig<StateTransitionConfig>;
@@ -177,53 +181,77 @@ type Props = {
 const StateTransitions = React.memo(function StateTransitions(props: Props) {
   const { config, saveConfig } = props;
   const { paths } = config;
-  const { classes, cx } = useStyles();
-
-  const onInputChange = (value: string, index?: number) => {
-    if (index == undefined) {
-      throw new Error("index not set");
-    }
-    const newPaths = config.paths.slice();
-    const newPath = newPaths[index];
-    if (newPath) {
-      newPaths[index] = { ...newPath, value: value.trim() };
-    }
-    saveConfig({ paths: newPaths });
-  };
-
-  const onInputTimestampMethodChange = (value: TimestampMethod, index: number | undefined) => {
-    if (index == undefined) {
-      throw new Error("index not set");
-    }
-    const newPaths = config.paths.slice();
-    const newPath = newPaths[index];
-    if (newPath) {
-      newPaths[index] = { ...newPath, timestampMethod: value };
-    }
-    saveConfig({ paths: newPaths });
-  };
+  const { classes } = useStyles();
 
   const pathStrings = useMemo(() => paths.map(({ value }) => value), [paths]);
-  const subscribeTopics = useMemo(() => getTopicsFromPaths(pathStrings), [pathStrings]);
+
+  const { openPanelSettings } = useWorkspaceActions();
+  const { id: panelId, setMessagePathDropConfig } = usePanelContext();
+  const { setSelectedPanelIds } = useSelectedPanels();
+  const [focusedPath, setFocusedPath] = useState<undefined | string[]>(undefined);
+
+  useEffect(() => {
+    setMessagePathDropConfig({
+      getDropStatus(draggedPaths) {
+        if (draggedPaths.some((path) => !path.isLeaf)) {
+          return { canDrop: false };
+        }
+        return { canDrop: true, effect: "add" };
+      },
+      handleDrop(draggedPaths) {
+        saveConfig((prevConfig) => ({
+          ...prevConfig,
+          paths: [
+            // If there was only a single series and its path was empty (the default state of the
+            // panel), replace the series rather than adding to it
+            ...prevConfig.paths,
+            ...draggedPaths.map((path) => ({
+              value: path.path,
+              enabled: true,
+              timestampMethod: "receiveTime" as const,
+            })),
+          ],
+        }));
+      },
+    });
+  }, [saveConfig, setMessagePathDropConfig]);
 
   const { startTime } = PanelAPI.useDataSourceInfo();
   const currentTime = useMessagePipeline(selectCurrentTime);
   const currentTimeSinceStart = useMemo(
-    () => (!currentTime || !startTime ? undefined : toSec(subtractTimes(currentTime, startTime))),
+    () => (currentTime && startTime ? toSec(subtractTimes(currentTime, startTime)) : undefined),
     [currentTime, startTime],
+  );
+  const endTime = useMessagePipeline(selectEndTime);
+  const endTimeSinceStart = useMemo(
+    () => (endTime && startTime ? toSec(subtractTimes(endTime, startTime)) : undefined),
+    [endTime, startTime],
   );
   const itemsByPath = useMessagesByPath(pathStrings);
 
   const decodeMessagePathsForMessagesByTopic = useDecodeMessagePathsForMessagesByTopic(pathStrings);
 
-  const blocks = useBlocksByTopic(subscribeTopics);
+  const subscriptions: SubscribePayload[] = useMemo(
+    () =>
+      filterMap(paths, (path) => {
+        const payload = subscribePayloadFromMessagePath(path.value, "full");
+        // Include the header in case we are ordering by header stamp.
+        if (path.timestampMethod === "headerStamp" && payload?.fields != undefined) {
+          payload.fields.push("header");
+        }
+        return payload;
+      }),
+    [paths],
+  );
+
+  const blocks = PanelAPI.useBlocksSubscriptions(subscriptions);
   const decodedBlocks = useMemo(
     () => blocks.map(decodeMessagePathsForMessagesByTopic),
     [blocks, decodeMessagePathsForMessagesByTopic],
   );
 
   const { height, heightPerTopic } = useMemo(() => {
-    const onlyTopicsHeight = paths.length * 55;
+    const onlyTopicsHeight = paths.length * 64;
     const xAxisHeight = 30;
     return {
       height: Math.max(80, onlyTopicsHeight + xAxisHeight),
@@ -231,20 +259,28 @@ const StateTransitions = React.memo(function StateTransitions(props: Props) {
     };
   }, [paths.length]);
 
-  const { datasets, tooltips, minY } = useMemo(() => {
-    let outMinY: number | undefined;
+  // If our blocks data covers all paths in the chart then ignore the data in itemsByPath
+  // since it's not needed to render the chart and would just cause unnecessary re-renders
+  // if included in the dataset.
+  const newItemsByPath = useMemo(() => {
+    const newItemsNotInBlocks = _.pickBy(
+      itemsByPath,
+      (_items, path) => !decodedBlocks.some((block) => block[path]),
+    );
+    return _.isEmpty(newItemsNotInBlocks) ? EMPTY_ITEMS_BY_PATH : newItemsNotInBlocks;
+  }, [decodedBlocks, itemsByPath]);
 
-    let outTooltips: TimeBasedChartTooltipData[] = [];
-    let outDatasets: ChartData["datasets"] = [];
-
+  const { datasets, minY } = useMemo(() => {
     // ignore all data when we don't have a start time
     if (!startTime) {
       return {
-        datasets: outDatasets,
-        tooltips: outTooltips,
-        minY: outMinY,
+        datasets: [],
+        minY: undefined,
       };
     }
+
+    let outMinY: number | undefined;
+    let outDatasets: ChartDatasets = [];
 
     paths.forEach((path, pathIndex) => {
       // y axis values are set based on the path we are rendering
@@ -254,51 +290,44 @@ const StateTransitions = React.memo(function StateTransitions(props: Props) {
 
       const blocksForPath = decodedBlocks.map((decodedBlock) => decodedBlock[path.value]);
 
-      {
-        const { datasets: newDataSets, tooltips: newTooltips } = messagesToDatasets({
-          path,
-          startTime,
-          y,
-          pathIndex,
-          blocks: blocksForPath,
-        });
+      const newBlockDataSets = messagesToDatasets({
+        blocks: blocksForPath,
+        path,
+        pathIndex,
+        startTime,
+        y,
+      });
 
-        outDatasets = outDatasets.concat(newDataSets);
-        outTooltips = outTooltips.concat(newTooltips);
-      }
+      outDatasets = outDatasets.concat(newBlockDataSets);
 
-      // If we have have messages in blocks for this path, we ignore streamed messages and only
-      // display the messages from blocks.
-      const haveBlocksForPath = blocksForPath.some((item) => item != undefined);
-      if (haveBlocksForPath) {
-        return;
-      }
-
-      const items = itemsByPath[path.value];
+      // We have already filtered out paths we can find in blocks so anything left here
+      // should be included in the dataset.
+      const items = newItemsByPath[path.value];
       if (items) {
-        const { datasets: newDataSets, tooltips: newTooltips } = messagesToDatasets({
+        const newPathDataSets = messagesToDatasets({
+          blocks: [items],
           path,
+          pathIndex,
           startTime,
           y,
-          pathIndex,
-          blocks: [items],
         });
-        outDatasets = outDatasets.concat(newDataSets);
-        outTooltips = outTooltips.concat(newTooltips);
+        outDatasets = outDatasets.concat(newPathDataSets);
       }
     });
 
     return {
       datasets: outDatasets,
-      tooltips: outTooltips,
       minY: outMinY,
     };
-  }, [itemsByPath, decodedBlocks, paths, startTime]);
+  }, [decodedBlocks, newItemsByPath, paths, startTime]);
 
   const yScale = useMemo<ScaleOptions<"linear">>(() => {
     return {
       ticks: {
         // Hide all y-axis ticks since each bar on the y-axis is just a separate path.
+        display: false,
+      },
+      grid: {
         display: false,
       },
       type: "linear",
@@ -310,17 +339,69 @@ const StateTransitions = React.memo(function StateTransitions(props: Props) {
   const xScale = useMemo<ScaleOptions<"linear">>(() => {
     return {
       type: "linear",
+      border: {
+        display: false,
+      },
     };
   }, []);
+
+  const databounds: undefined | Bounds = useMemo(() => {
+    if (
+      (config.xAxisMinValue != undefined || config.xAxisMaxValue != undefined) &&
+      endTimeSinceStart != undefined
+    ) {
+      return {
+        x: {
+          min: config.xAxisMinValue ?? 0,
+          max: config.xAxisMaxValue ?? endTimeSinceStart,
+        },
+        y: { min: Number.MIN_SAFE_INTEGER, max: Number.MAX_SAFE_INTEGER },
+      };
+    } else if (config.xAxisRange != undefined && currentTimeSinceStart != undefined) {
+      return {
+        x: { min: currentTimeSinceStart - config.xAxisRange, max: currentTimeSinceStart },
+        y: { min: Number.MIN_SAFE_INTEGER, max: Number.MAX_SAFE_INTEGER },
+      };
+    } else {
+      return undefined;
+    }
+  }, [
+    config.xAxisMaxValue,
+    config.xAxisMinValue,
+    config.xAxisRange,
+    currentTimeSinceStart,
+    endTimeSinceStart,
+  ]);
 
   // Use a debounce and 0 refresh rate to avoid triggering a resize observation while handling
   // an existing resize observation.
   // https://github.com/maslianok/react-resize-detector/issues/45
-  const { width, ref: sizeRef } = useResizeDetector({
+  const { width, ref: sizeRef } = useResizeDetector<HTMLDivElement>({
     handleHeight: false,
     refreshRate: 0,
     refreshMode: "debounce",
   });
+
+  // Disable the wheel event for the chart wrapper div (which is where we use sizeRef)
+  //
+  // The chart component uses wheel events for zoom and pan. After adding more series, the logic
+  // expands the chart element beyond the visible area of the panel. When this happens, scrolling on
+  // the chart also scrolls the chart wrapper div and results in zooming that chart AND scrolling
+  // the panel. This behavior is undesirable.
+  //
+  // This effect registers a wheel event handler for the wrapper div to prevent scrolling. To scroll
+  // the panel the user will use the scrollbar.
+  useEffect(() => {
+    const el = sizeRef.current;
+    const handler = (ev: WheelEvent) => {
+      ev.preventDefault();
+    };
+
+    el?.addEventListener("wheel", handler);
+    return () => {
+      el?.removeEventListener("wheel", handler);
+    };
+  }, [sizeRef]);
 
   const messagePipeline = useMessagePipelineGetter();
   const onClick = useCallback(
@@ -339,40 +420,12 @@ const StateTransitions = React.memo(function StateTransitions(props: Props) {
   );
 
   const data: ChartData = useShallowMemo({ datasets });
-  const rootRef = useRef<HTMLDivElement>(ReactNull);
-  const mousePresent = usePanelMousePresence(rootRef);
 
-  useStateTransitionsPanelSettings(config, saveConfig);
-
-  const pointToDatumTooltipMap = useMemo(() => {
-    const lookup = new Map<string, TimeBasedChartTooltipData>();
-    for (const tip of tooltips) {
-      lookup.set(`${tip.x}:${tip.y}:${tip.datasetIndex}`, tip);
-    }
-    return lookup;
-  }, [tooltips]);
+  useStateTransitionsPanelSettings(config, saveConfig, focusedPath);
 
   return (
-    <Stack ref={rootRef} flexGrow={1} overflow="hidden" style={{ zIndex: 0 }}>
+    <Stack flexGrow={1} overflow="hidden" style={{ zIndex: 0 }}>
       <PanelToolbar />
-      <div
-        className={cx(classes.addButton, {
-          [classes.visibilityHidden]: !mousePresent,
-        })}
-      >
-        <Button
-          size="small"
-          variant="contained"
-          color="inherit"
-          startIcon={<AddIcon />}
-          disableRipple
-          onClick={() =>
-            saveConfig({ paths: [...config.paths, { value: "", timestampMethod: "receiveTime" }] })
-          }
-        >
-          Add topic
-        </Button>
-      </div>
       <Stack fullWidth flex="auto" overflowX="hidden" overflowY="auto">
         <div className={classes.chartWrapper} style={{ height }} ref={sizeRef}>
           <TimeBasedChart
@@ -382,53 +435,48 @@ const StateTransitions = React.memo(function StateTransitions(props: Props) {
             width={width ?? 0}
             height={height}
             data={data}
+            dataBounds={databounds}
             type="scatter"
             xAxes={xScale}
             xAxisIsPlaybackTime
             yAxes={yScale}
             plugins={plugins}
-            tooltips={pointToDatumTooltipMap}
             onClick={onClick}
             currentTime={currentTimeSinceStart}
           />
 
-          {paths.map(({ value: path, timestampMethod }, index) => (
-            <div className={classes.row} key={index} style={{ top: index * heightPerTopic }}>
-              <IconButton
-                size="small"
-                className={classes.clearButton}
-                onClick={() => {
-                  const newPaths = config.paths.slice();
-                  newPaths.splice(index, 1);
-                  saveConfig({ paths: newPaths });
-                }}
-              >
-                <ClearIcon fontSize="inherit" />
-              </IconButton>
-              <MessagePathInput
-                path={path}
-                onChange={onInputChange}
-                index={index}
-                autoSize
-                validTypes={transitionableRosTypes}
-                noMultiSlices
-              />
-              <TimestampMethodDropdown
-                path={path}
-                index={index}
-                iconButtonProps={{ disabled: path !== "" }}
-                timestampMethod={timestampMethod}
-                onTimestampMethodChange={onInputTimestampMethodChange}
-              />
-            </div>
-          ))}
+          <Stack className={classes.chartOverlay} position="absolute" paddingTop={0.5}>
+            {(paths.length === 0 ? [DEFAULT_PATH] : paths).map((path, index) => (
+              <div className={classes.row} key={index} style={{ height: heightPerTopic }}>
+                <Button
+                  size="small"
+                  color="inherit"
+                  data-testid="edit-topic-button"
+                  className={classes.button}
+                  endIcon={paths.length === 0 ? <Add16Filled /> : <Edit16Filled />}
+                  onClick={() => {
+                    setSelectedPanelIds([panelId]);
+                    openPanelSettings();
+                    setFocusedPath(["paths", String(index)]);
+                  }}
+                >
+                  <Typography variant="inherit" noWrap>
+                    {stateTransitionPathDisplayName(path, "Click to add a series")}
+                  </Typography>
+                </Button>
+              </div>
+            ))}
+          </Stack>
         </div>
       </Stack>
     </Stack>
   );
 });
 
-const defaultConfig: StateTransitionConfig = { paths: [], isSynced: true };
+const defaultConfig: StateTransitionConfig = {
+  paths: [],
+  isSynced: true,
+};
 export default Panel(
   Object.assign(StateTransitions, {
     panelType: "StateTransitions",

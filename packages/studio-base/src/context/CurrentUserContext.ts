@@ -6,6 +6,7 @@ import { createContext, useContext } from "react";
 
 export type User = {
   id: string;
+  avatarImageUrl?: string | null; // eslint-disable-line no-restricted-syntax
   email: string;
   orgId: string;
   orgDisplayName: string | null; // eslint-disable-line no-restricted-syntax
@@ -23,14 +24,12 @@ export type User = {
 
 export interface CurrentUser {
   currentUser: User | undefined;
-  signIn: () => void;
-  signOut: () => Promise<void>;
+  signIn?: () => void;
+  signOut?: () => Promise<void>;
 }
 
 const CurrentUserContext = createContext<CurrentUser>({
   currentUser: undefined,
-  signIn: () => {},
-  signOut: async () => {},
 });
 CurrentUserContext.displayName = "CurrentUserContext";
 

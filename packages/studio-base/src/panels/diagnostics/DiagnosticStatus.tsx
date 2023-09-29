@@ -21,12 +21,14 @@ import {
   TableRow,
   IconButton,
   Typography,
-  styled as muiStyled,
+  tableRowClasses,
+  iconButtonClasses,
 } from "@mui/material";
-import { clamp } from "lodash";
+import * as _ from "lodash-es";
 import { ReactElement, useCallback, useEffect, useRef, useState } from "react";
 import { createSelector } from "reselect";
 import sanitizeHtml from "sanitize-html";
+import { makeStyles } from "tss-react/mui";
 
 import Stack from "@foxglove/studio-base/components/Stack";
 import { openSiblingPlotPanel } from "@foxglove/studio-base/panels/Plot";
@@ -82,6 +84,56 @@ const allowedTags = [
   "H6",
 ];
 
+const useStyles = makeStyles()((theme) => ({
+  resizeHandle: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 12,
+    marginLeft: -6,
+    cursor: "col-resize",
+
+    "&:hover, &:active, &:focus": {
+      outline: "none",
+
+      "&::after": {
+        content: '""',
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        left: 6,
+        marginLeft: -2,
+        width: 4,
+        backgroundColor: theme.palette.action.focus,
+      },
+    },
+  },
+  table: {
+    "@media (pointer: fine)": {
+      [`.${tableRowClasses.root} .${iconButtonClasses.root}`]: { visibility: "hidden" },
+      [`.${tableRowClasses.root}:hover .${iconButtonClasses.root}`]: { visibility: "visible" },
+    },
+  },
+  tableHeaderRow: {
+    backgroundColor: theme.palette.background.paper,
+  },
+  htmlTableCell: {
+    "h1, h2, h3, h4, h5, h6": {
+      fontFamily: theme.typography.subtitle2.fontFamily,
+      fontSize: theme.typography.subtitle2.fontSize,
+      lineHeight: theme.typography.subtitle2.lineHeight,
+      letterSpacing: theme.typography.subtitle2.letterSpacing,
+      fontWeight: 800,
+      margin: 0,
+    },
+  },
+  iconButton: {
+    "&:hover, &:active, &:focus": {
+      backgroundColor: "transparent",
+    },
+  },
+}));
+
 function sanitize(value: string): { __html: string } {
   return {
     __html: sanitizeHtml(value, {
@@ -94,58 +146,6 @@ function sanitize(value: string): { __html: string } {
     }),
   };
 }
-
-const ResizeHandle = muiStyled("div", {
-  shouldForwardProp: (prop) => prop !== "splitFraction",
-})<{ splitFraction: number }>(({ theme, splitFraction }) => ({
-  position: "absolute",
-  top: 0,
-  bottom: 0,
-  width: 12,
-  marginLeft: -6,
-  cursor: "col-resize",
-  left: `${100 * splitFraction}%`,
-
-  "&:hover, &:active, &:focus": {
-    outline: "none",
-
-    "&::after": {
-      content: '""',
-      position: "absolute",
-      top: 0,
-      bottom: 0,
-      left: 6,
-      marginLeft: -2,
-      width: 4,
-      backgroundColor: theme.palette.action.focus,
-    },
-  },
-}));
-
-const StyledTable = muiStyled(Table)({
-  "@media (pointer: fine)": {
-    ".MuiTableRow-root .MuiIconButton-root": { visibility: "hidden" },
-    ".MuiTableRow-root:hover .MuiIconButton-root": { visibility: "visible" },
-  },
-});
-
-const HeaderTableRow = muiStyled(TableRow)(({ theme }) => ({
-  backgroundColor: theme.palette.background.paper,
-}));
-
-const HTMLTableCell = muiStyled(TableCell)(({ theme }) => ({
-  "h1, h2, h3, h4, h5, h6": {
-    ...theme.typography.subtitle2,
-    fontWeight: 800,
-    margin: 0,
-  },
-}));
-
-const StyledIconButton = muiStyled(IconButton)({
-  "&:hover, &:active, &:focus": {
-    backgroundColor: "transparent",
-  },
-});
 
 // preliminary check to avoid expensive operations when there is no html
 const HAS_ANY_HTML = new RegExp(`<(${allowedTags.join("|")})`);
@@ -174,13 +174,16 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
     openSiblingPanel,
     splitFraction = 0.5,
   } = props;
+  const { classes } = useStyles();
   const tableRef = useRef<HTMLTableElement>(ReactNull);
 
-  const resizeMouseDown = useCallback((event: React.MouseEvent<Element>) => {
+  const resizeMouseDown = useCallback((event: React.MouseEvent) => {
     setResizing(true);
     event.preventDefault();
   }, []);
-  const resizeMouseUp = useCallback(() => setResizing(false), []);
+  const resizeMouseUp = useCallback(() => {
+    setResizing(false);
+  }, []);
   const resizeMouseMove = useCallback(
     (event: MouseEvent) => {
       if (!tableRef.current) {
@@ -188,7 +191,7 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
       }
 
       const { left, right } = tableRef.current.getBoundingClientRect();
-      const newSplitFraction = clamp(
+      const newSplitFraction = _.clamp(
         (event.clientX - left) / (right - left),
         MIN_SPLIT_FRACTION,
         1 - MIN_SPLIT_FRACTION,
@@ -219,7 +222,7 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
       openPlotPanelIconElem?: React.ReactNode,
     ): ReactElement => {
       if (html) {
-        return <HTMLTableCell dangerouslySetInnerHTML={html} />;
+        return <TableCell className={classes.htmlTableCell} dangerouslySetInnerHTML={html} />;
       }
 
       // Apply numeric precision to the value if requested and it can be parsed
@@ -246,7 +249,7 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
         </>
       );
     },
-    [numericPrecision],
+    [classes.htmlTableCell, numericPrecision],
   );
 
   const renderKeyValueSections = useCallback((): React.ReactNode => {
@@ -260,24 +263,30 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
       let openPlotPanelIconElem = undefined;
       if (value.length > 0) {
         openPlotPanelIconElem = !isNaN(Number(value)) ? (
-          <StyledIconButton
+          <IconButton
+            className={classes.iconButton}
             title="Open in Plot panel"
             color="inherit"
             size="small"
             data-testid="open-plot-icon"
-            onClick={() => openSiblingPlotPanel(openSiblingPanel, valuePath)}
+            onClick={() => {
+              openSiblingPlotPanel(openSiblingPanel, valuePath);
+            }}
           >
             <ShowChartIcon fontSize="inherit" />
-          </StyledIconButton>
+          </IconButton>
         ) : (
-          <StyledIconButton
+          <IconButton
+            className={classes.iconButton}
             title="Open in State Transitions panel"
             color="inherit"
             size="small"
-            onClick={() => openSiblingStateTransitionsPanel(openSiblingPanel, valuePath)}
+            onClick={() => {
+              openSiblingStateTransitionsPanel(openSiblingPanel, valuePath);
+            }}
           >
             <PowerInputIcon fontSize="inherit" />
-          </StyledIconButton>
+          </IconButton>
         );
       }
       return (
@@ -287,23 +296,26 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
         </TableRow>
       );
     });
-  }, [info.status, openSiblingPanel, renderKeyValueCell, topicToRender]);
+  }, [classes.iconButton, info.status, openSiblingPanel, renderKeyValueCell, topicToRender]);
 
   const STATUS_COLORS: Record<number, string> = {
     [LEVELS.OK]: "success.main",
     [LEVELS.ERROR]: "error.main",
     [LEVELS.WARN]: "warning.main",
-    [LEVELS.STALE]: "info.main",
+    [LEVELS.STALE]: "text.secondary",
   };
 
   return (
     <div>
-      <ResizeHandle
-        splitFraction={splitFraction}
+      <div
+        className={classes.resizeHandle}
+        style={{
+          left: `${100 * splitFraction}%`,
+        }}
         onMouseDown={resizeMouseDown}
         data-testid-resizehandle
       />
-      <StyledTable size="small" ref={tableRef}>
+      <Table className={classes.table} size="small" ref={tableRef}>
         <TableBody>
           {/* Use a dummy row to fix the column widths */}
           <TableRow style={{ height: 0 }}>
@@ -313,7 +325,7 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
             />
             <TableCell padding="none" style={{ borderLeft: "none" }} />
           </TableRow>
-          <HeaderTableRow>
+          <TableRow className={classes.tableHeaderRow}>
             <TableCell variant="head" data-testid="DiagnosticStatus-display-name" colSpan={2}>
               <Tooltip
                 arrow
@@ -337,7 +349,7 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
                 </Typography>
               </Tooltip>
             </TableCell>
-          </HeaderTableRow>
+          </TableRow>
           <TableRow hover>
             <TableCell colSpan={2} padding="checkbox">
               <Stack
@@ -356,25 +368,26 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
                   {info.status.message}
                 </Typography>
                 <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}>
-                  <StyledIconButton
+                  <IconButton
+                    className={classes.iconButton}
                     title="Open in State Transitions panel"
                     size="small"
-                    onClick={() =>
+                    onClick={() => {
                       openSiblingStateTransitionsPanel(
                         openSiblingPanel,
                         `${topicToRender}.status[:]{hardware_id=="${info.status.hardware_id}"}{name=="${info.status.name}"}.message`,
-                      )
-                    }
+                      );
+                    }}
                   >
                     <PowerInputIcon fontSize="inherit" />
-                  </StyledIconButton>
+                  </IconButton>
                 </Stack>
               </Stack>
             </TableCell>
           </TableRow>
           {renderKeyValueSections()}
         </TableBody>
-      </StyledTable>
+      </Table>
     </div>
   );
 }
@@ -382,7 +395,7 @@ export default function DiagnosticStatus(props: Props): JSX.Element {
 // Returns true if the input string can be parsed as a float or an integer using
 // parseFloat(). Hex and octal numbers will return false.
 function isFloatOrInteger(n: string): boolean {
-  if (n[0] === "0" && n.length > 1) {
+  if (n.startsWith("0") && n.length > 1) {
     if (n[1] === "x" || n[1] === "X" || n[1] === "o" || n[1] === "O") {
       return false;
     }

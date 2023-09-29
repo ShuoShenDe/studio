@@ -11,41 +11,70 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { sortBy, take } from "lodash";
-import { PropsWithChildren, useMemo } from "react";
+import { Square12Filled } from "@fluentui/react-icons";
+import * as _ from "lodash-es";
+import { Fragment, PropsWithChildren, useMemo } from "react";
 import { makeStyles } from "tss-react/mui";
 
-import { fonts } from "@foxglove/studio-base/util/sharedStyleConstants";
+import { Immutable } from "@foxglove/studio";
+import Stack from "@foxglove/studio-base/components/Stack";
 
-import { TimeBasedChartTooltipData } from "./index";
+export type TimeBasedChartTooltipData = {
+  datasetIndex: number;
+  value: number | bigint | boolean | string;
+  constantName?: string;
+};
 
-type Props = {
+type Props = Immutable<{
   colorsByDatasetIndex?: Record<string, undefined | string>;
   content: TimeBasedChartTooltipData[];
+  labelsByDatasetIndex?: Record<string, undefined | string>;
   // Flag indicating the containing chart has multiple datasets
   multiDataset: boolean;
-};
+}>;
 
 const useStyles = makeStyles()((theme) => ({
   root: {
-    display: "flex",
-    flexDirection: "column",
-    fontFamily: fonts.MONOSPACE,
+    fontFamily: theme.typography.fontMonospace,
     fontSize: theme.typography.caption.fontSize,
     lineHeight: theme.typography.caption.lineHeight,
     overflowWrap: "break-word",
   },
-  overflow: {
-    opacity: theme.palette.action.disabledOpacity,
-    fontStyle: "italic",
+  grid: {
+    columnGap: theme.spacing(0.5),
+    display: "grid",
+    gridTemplateColumns: "auto minmax(0px, max-content) minmax(auto, max-content)",
+    alignItems: "center",
+    fontFamily: theme.typography.fontMonospace,
+    fontSize: theme.typography.caption.fontSize,
+    lineHeight: theme.typography.caption.lineHeight,
+    overflowWrap: "break-word",
+  },
+  icon: {
+    gridColumn: "1",
+    height: 12,
+    width: 12,
   },
   path: {
     opacity: 0.9,
     whiteSpace: "nowrap",
   },
+  value: {
+    fontWeight: 600,
+    paddingLeft: theme.spacing(2),
+  },
+  overflow: {
+    gridColumn: "2/4",
+    opacity: theme.palette.action.disabledOpacity,
+    fontStyle: "italic",
+
+    ":not(:last-child)": {
+      marginBottom: theme.spacing(0.5),
+    },
+  },
 }));
 
-function OverflowMessage() {
+function OverflowMessage(): JSX.Element {
   const { classes } = useStyles();
 
   return <div className={classes.overflow}>&lt;multiple values under cursor&gt;</div>;
@@ -54,90 +83,94 @@ function OverflowMessage() {
 export default function TimeBasedChartTooltipContent(
   props: PropsWithChildren<Props>,
 ): React.ReactElement {
-  const { colorsByDatasetIndex, content, multiDataset } = props;
-  const { classes } = useStyles();
+  const { colorsByDatasetIndex, content, labelsByDatasetIndex, multiDataset } = props;
+  const { classes, cx } = useStyles();
 
-  const itemsByPath = useMemo(() => {
-    const out = new Map<string, TimeBasedChartTooltipData[]>();
-    const overflow = new Set<string>();
+  // Compute whether there are multiple items for the dataset so we can show the user
+  // a message informing them about the multiple items.
+  //
+  // We do not actually show all the items to keep the tooltip size sane.
+  const sortedItems = useMemo(() => {
     // for single dataset plots we don't care about grouping by path - there is only one path
     if (!multiDataset) {
-      return { out, overflow };
+      return [];
     }
+
+    const out = new Map<
+      number,
+      { tooltip: TimeBasedChartTooltipData; hasMultipleValues: boolean }
+    >();
+
     // group items by path
     for (const item of content) {
-      const existing = out.get(item.path) ?? [];
-      existing.push(item);
-      out.set(item.path, existing);
-
-      if (existing.length > 1) {
-        overflow.add(item.path);
+      const datasetIndex = item.datasetIndex;
+      const existing = out.get(datasetIndex);
+      if (existing) {
+        existing.hasMultipleValues = true;
+        continue;
       }
+
+      out.set(datasetIndex, {
+        tooltip: item,
+        hasMultipleValues: false,
+      });
     }
 
-    return { out, overflow };
+    // Sort by datasetIndex to keep the displayed values in the same order as the settings
+    return _.sortBy([...out.entries()], ([, items]) => items.tooltip.datasetIndex);
   }, [content, multiDataset]);
 
   // If the chart contains only one dataset, we don't need to render the dataset label - saving space
+  //
   // We cannot detect this from the content since content is only what is actively hovered which may
   // not include all datasets
   if (!multiDataset) {
+    const tooltip = content[0];
+    if (!tooltip) {
+      return <></>;
+    }
+
+    const value =
+      typeof tooltip.value === "string"
+        ? tooltip.value
+        : typeof tooltip.value === "bigint"
+        ? tooltip.value.toString()
+        : JSON.stringify(tooltip.value);
+
     return (
-      <div className={classes.root} data-testid="TimeBasedChartTooltipContent">
-        {take(content, 1).map((item, idx) => {
-          const value =
-            typeof item.value === "string"
-              ? item.value
-              : typeof item.value === "bigint"
-              ? item.value.toString()
-              : JSON.stringify(item.value);
-          return (
-            <div key={idx}>
-              {value}
-              {item.constantName != undefined ? ` (${item.constantName})` : ""}
-            </div>
-          );
-        })}
+      <Stack className={classes.root} data-testid="TimeBasedChartTooltipContent">
+        <div>
+          {value}
+          {tooltip.constantName != undefined ? ` (${tooltip.constantName})` : ""}
+        </div>
         {content.length > 1 && <OverflowMessage />}
-      </div>
+      </Stack>
     );
   }
 
-  // Sort items by their dataset index to maintain the same ordering as the series in the legend.
-  const sortedItems = sortBy(
-    [...itemsByPath.out.entries()],
-    ([_, items]) => items[0]?.datasetIndex ?? 0,
-  );
-
   return (
-    <div className={classes.root} data-testid="TimeBasedChartTooltipContent">
-      {sortedItems.map(([path, items], idx) => {
-        const firstItem = items[0];
-        const color =
-          firstItem?.datasetIndex != undefined
-            ? colorsByDatasetIndex?.[firstItem.datasetIndex]
-            : "auto";
+    <div className={cx(classes.root, classes.grid)} data-testid="TimeBasedChartTooltipContent">
+      {sortedItems.map(([datasetIndex, item], idx) => {
+        const color = colorsByDatasetIndex?.[datasetIndex] ?? "auto";
+        const label = labelsByDatasetIndex?.[datasetIndex];
+        const tooltip = item.tooltip;
+        const value =
+          typeof tooltip.value === "string"
+            ? tooltip.value
+            : typeof tooltip.value === "bigint"
+            ? tooltip.value.toString()
+            : JSON.stringify(tooltip.value);
+
         return (
-          <div key={idx}>
-            <div className={classes.path} style={{ color: color ?? "auto" }}>
-              {path}
+          <Fragment key={idx}>
+            <Square12Filled className={classes.icon} primaryFill={color} />
+            <div className={classes.path}>{label ?? ""}</div>
+            <div className={classes.value}>
+              {value}
+              {tooltip.constantName != undefined ? ` (${tooltip.constantName})` : ""}
             </div>
-            {take(items, 1).map((item, itemIdx) => {
-              const value =
-                typeof item.value === "string"
-                  ? item.value
-                  : typeof item.value === "bigint"
-                  ? item.value.toString()
-                  : JSON.stringify(item.value);
-              return (
-                <div key={itemIdx}>
-                  {value}
-                  {item.constantName != undefined ? ` (${item.constantName})` : ""}
-                </div>
-              );
-            })}
-            {itemsByPath.overflow.has(path) && <OverflowMessage />}
-          </div>
+            {item.hasMultipleValues && <OverflowMessage />}
+          </Fragment>
         );
       })}
     </div>

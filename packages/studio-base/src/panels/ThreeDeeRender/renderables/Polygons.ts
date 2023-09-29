@@ -7,8 +7,8 @@ import { SettingsTreeAction, SettingsTreeFields } from "@foxglove/studio";
 import type { RosValue } from "@foxglove/studio-base/players/types";
 
 import { RenderableLineStrip } from "./markers/RenderableLineStrip";
+import type { AnyRendererSubscription, IRenderer } from "../IRenderer";
 import { BaseUserData, Renderable } from "../Renderable";
-import { Renderer } from "../Renderer";
 import { PartialMessage, PartialMessageEvent, SceneExtension } from "../SceneExtension";
 import { SettingsTreeEntry } from "../SettingsManager";
 import { makeRgba, rgbaToCssString, stringToRgba } from "../color";
@@ -61,10 +61,19 @@ export class PolygonRenderable extends Renderable<PolygonUserData> {
 }
 
 export class Polygons extends SceneExtension<PolygonRenderable> {
-  public constructor(renderer: Renderer) {
-    super("foxglove.Polygons", renderer);
+  public static extensionId = "foxglove.Polygons";
+  public constructor(renderer: IRenderer, name: string = Polygons.extensionId) {
+    super(name, renderer);
+  }
 
-    renderer.addSchemaSubscriptions(POLYGON_STAMPED_DATATYPES, this.handlePolygon);
+  public override getSubscriptions(): readonly AnyRendererSubscription[] {
+    return [
+      {
+        type: "schema",
+        schemaNames: POLYGON_STAMPED_DATATYPES,
+        subscription: { handler: this.#handlePolygon },
+      },
+    ];
   }
 
   public override settingsNodes(): SettingsTreeEntry[] {
@@ -113,7 +122,7 @@ export class Polygons extends SceneExtension<PolygonRenderable> {
         | Partial<LayerSettingsPolygon>
         | undefined;
       renderable.userData.settings = { ...DEFAULT_SETTINGS, ...settings };
-      this._updatePolygonRenderable(
+      this.#updatePolygonRenderable(
         renderable,
         renderable.userData.polygonStamped,
         renderable.userData.receiveTime,
@@ -121,7 +130,7 @@ export class Polygons extends SceneExtension<PolygonRenderable> {
     }
   };
 
-  private handlePolygon = (messageEvent: PartialMessageEvent<PolygonStamped>): void => {
+  #handlePolygon = (messageEvent: PartialMessageEvent<PolygonStamped>): void => {
     const topic = messageEvent.topic;
     const polygonStamped = normalizePolygonStamped(messageEvent.message);
     const receiveTime = toNanoSec(messageEvent.receiveTime);
@@ -150,10 +159,10 @@ export class Polygons extends SceneExtension<PolygonRenderable> {
       this.renderables.set(topic, renderable);
     }
 
-    this._updatePolygonRenderable(renderable, polygonStamped, receiveTime);
+    this.#updatePolygonRenderable(renderable, polygonStamped, receiveTime);
   };
 
-  private _updatePolygonRenderable(
+  #updatePolygonRenderable(
     renderable: PolygonRenderable,
     polygonStamped: PolygonStamped,
     receiveTime: bigint,

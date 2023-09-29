@@ -65,85 +65,114 @@ const useStyles = makeStyles<StackProps>({ name: "FoxgloveStack" })((theme, prop
     ...(props.paddingRight != undefined && {
       paddingRight: theme.spacing(props.paddingRight),
     }),
+    ...(props.paddingBlock != undefined && {
+      paddingBlock: theme.spacing(props.paddingBlock),
+    }),
+    ...(props.paddingBlockStart != undefined && {
+      paddingBlockStart: theme.spacing(props.paddingBlockStart),
+    }),
+    ...(props.paddingBlockEnd != undefined && {
+      paddingBlockEnd: theme.spacing(props.paddingBlockEnd),
+    }),
+    ...(props.paddingInline != undefined && {
+      paddingInline: theme.spacing(props.paddingInline),
+    }),
+    ...(props.paddingInlineStart != undefined && {
+      paddingInlineStart: theme.spacing(props.paddingInlineStart),
+    }),
+    ...(props.paddingInlineEnd != undefined && {
+      paddingInlineEnd: theme.spacing(props.paddingInlineEnd),
+    }),
   },
 }));
 
-export default forwardRef<HTMLDivElement, PropsWithChildren<StackProps>>(function Stack(
-  props,
-  ref,
-): JSX.Element {
-  const {
-    alignItems,
-    alignSelf,
-    children,
-    className,
-    direction = "column",
-    flex,
-    flexBasis,
-    flexGrow,
-    flexShrink,
-    flexWrap,
-    fullHeight = false,
-    fullWidth = false,
-    gap,
-    gapX,
-    gapY,
-    inline = false,
-    justifyContent,
-    order,
-    overflow,
-    overflowX,
-    overflowY,
-    padding,
-    paddingBottom,
-    paddingLeft,
-    paddingRight,
-    paddingTop,
-    paddingX,
-    paddingY,
-    position,
-    style,
-    zeroMinWidth = false,
-    ...rest
-  } = props;
+export default forwardRef<HTMLDivElement, PropsWithChildren<StackProps>>(
+  function Stack(props, ref): JSX.Element {
+    const {
+      alignItems,
+      alignSelf,
+      children,
+      className,
+      direction = "column",
+      flex,
+      flexBasis,
+      flexGrow,
+      flexShrink,
+      flexWrap,
+      fullHeight = false,
+      fullWidth = false,
+      gap,
+      gapX,
+      gapY,
+      inline = false,
+      justifyContent,
+      order,
+      overflow,
+      overflowX,
+      overflowY,
+      padding,
+      paddingBottom,
+      paddingLeft,
+      paddingRight,
+      paddingTop,
+      paddingX,
+      paddingY,
+      paddingBlock,
+      paddingBlockStart,
+      paddingBlockEnd,
+      paddingInline,
+      paddingInlineStart,
+      paddingInlineEnd,
+      position,
+      style,
+      zeroMinWidth = false,
+      ...rest
+    } = props;
 
-  const { classes, cx } = useStyles({
-    alignItems,
-    alignSelf,
-    direction,
-    flex,
-    flexBasis,
-    flexGrow,
-    flexShrink,
-    flexWrap,
-    fullHeight,
-    fullWidth,
-    gap,
-    gapX,
-    gapY,
-    inline,
-    justifyContent,
-    order,
-    overflow,
-    overflowX,
-    overflowY,
-    padding,
-    paddingBottom,
-    paddingLeft,
-    paddingRight,
-    paddingTop,
-    paddingX,
-    paddingY,
-    position,
-    zeroMinWidth,
-  });
+    const { classes, cx } = useStyles({
+      alignItems,
+      alignSelf,
+      direction,
+      flex,
+      flexBasis,
+      flexGrow,
+      flexShrink,
+      flexWrap,
+      fullHeight,
+      fullWidth,
+      gap,
+      gapX,
+      gapY,
+      inline,
+      justifyContent,
+      order,
+      overflow,
+      overflowX,
+      overflowY,
+      padding,
+      paddingBottom,
+      paddingLeft,
+      paddingRight,
+      paddingTop,
+      paddingX,
+      paddingY,
+      paddingBlock,
+      paddingBlockStart,
+      paddingBlockEnd,
+      paddingInline,
+      paddingInlineStart,
+      paddingInlineEnd,
+      position,
+      zeroMinWidth,
+    });
 
-  return (
-    <div ref={ref} className={cx(classes.root, className)} style={style} {...rest}>
-      {children}
-    </div>
-  );
-});
+    return (
+      <div ref={ref} className={cx(classes.root, className)} style={style} {...rest}>
+        {children}
+      </div>
+    );
+  },
+);
 
 export type StackProps = {
   /** Class name applied to the root element. */
@@ -197,10 +226,11 @@ export type StackProps = {
   /** Defines the `padding` style property using `theme.spacing` increments. */
   padding?: number;
 
-  /** Defines the horizontal `padding` style property using `theme.spacing` increments. */
+  /**
+   * Defines the `padding-left` and `padding-right` style property using `theme.spacing` increments. */
   paddingX?: number;
 
-  /** Defines the vertical `padding` style property using `theme.spacing` increments. */
+  /** Defines the padding-top` and `padding-bottom` style property using `theme.spacing` increments. */
   paddingY?: number;
 
   /** Defines the vertical `padding-top` style property using `theme.spacing` increments. */
@@ -214,6 +244,24 @@ export type StackProps = {
 
   /** Defines the vertical `padding-right` style property using `theme.spacing` increments. */
   paddingRight?: number;
+
+  /** Defines the vertical `padding-block` style property using `theme.spacing` increments. */
+  paddingBlock?: number;
+
+  /** Defines the vertical `padding-block-start` style property using `theme.spacing` increments. */
+  paddingBlockStart?: number;
+
+  /** Defines the vertical `padding-block-end` style property using `theme.spacing` increments. */
+  paddingBlockEnd?: number;
+
+  /** Defines the vertical `padding-inline` style property using `theme.spacing` increments. */
+  paddingInline?: number;
+
+  /** Defines the vertical `padding-inline-start` style property using `theme.spacing` increments. */
+  paddingInlineStart?: number;
+
+  /** Defines the vertical `padding-inline-end` style property using `theme.spacing` increments. */
+  paddingInlineEnd?: number;
 
   /** Defines the `position` style property. */
   position?: CSSProperties["position"];
@@ -241,6 +289,9 @@ export type StackProps = {
 
   /** CSS styles to apply to the component. */
   style?: CSSProperties;
+
+  /** HTML title attribute */
+  title?: string;
 
   /** Standard pointer events. */
   onPointerDown?: React.DOMAttributes<HTMLDivElement>["onPointerDown"];

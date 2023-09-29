@@ -2,6 +2,8 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import { StoryObj } from "@storybook/react";
+import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter";
 import { TeapotGeometry } from "three/examples/jsm/geometries/TeapotGeometry";
@@ -13,13 +15,14 @@ import { ColorRGBA } from "@foxglove/studio-base/panels/ThreeDeeRender/ros";
 import { xyzrpyToPose } from "@foxglove/studio-base/panels/ThreeDeeRender/transforms";
 import { Topic } from "@foxglove/studio-base/players/types";
 import PanelSetup from "@foxglove/studio-base/stories/PanelSetup";
+import { useReadySignal } from "@foxglove/studio-base/stories/ReadySignalContext";
 
 import { makeColor, QUAT_IDENTITY, rad2deg } from "./common";
-import ThreeDeeRender from "../index";
+import ThreeDeePanel from "../index";
 
 export default {
   title: "panels/ThreeDeeRender/SceneEntities",
-  component: ThreeDeeRender,
+  component: ThreeDeePanel,
 };
 
 const icospherePointsAndIndices = {
@@ -141,12 +144,12 @@ function makeStoryScene({
               {
                 // non-indexed, single color
                 type,
-                pose: xyzrpyToPose([0, 0.8 + typeIndex * 0.2, 0], [0, 0, 0]),
+                pose: xyzrpyToPose([-0.2 + typeIndex * 0.2, 0.8 + typeIndex * 0.2, 0], [0, 0, 0]),
                 thickness: 0.05,
                 scale_invariant: false,
                 points: new Array(10).fill(0).map((_, i, { length }) => ({
-                  x: (0.8 * i) / (length - 1),
-                  y: 0.25 * Math.sin((2 * Math.PI * i) / (length - 1)),
+                  x: 0.25 * Math.cos((2 * Math.PI * i) / length),
+                  y: 0.25 * Math.sin((2 * Math.PI * i) / length),
                   z: 0,
                 })),
                 color: makeColor("#7995fb", 0.8),
@@ -156,29 +159,30 @@ function makeStoryScene({
               {
                 // indexed, single color
                 type,
-                pose: xyzrpyToPose([0, 1.8 + typeIndex * 0.2, 0], [0, 0, 0]),
+                pose: xyzrpyToPose([-0.2 + typeIndex * 0.2, 1.8 + typeIndex * 0.2, 0], [0, 0, 0]),
                 thickness: 0.05,
                 scale_invariant: false,
                 points: rearrange(
                   new Array(10).fill(0).map((_, i, { length }) => ({
-                    x: (0.8 * i) / (length - 1),
-                    y: 0.25 * Math.sin((2 * Math.PI * i) / (length - 1)),
+                    x: 0.25 * Math.cos((2 * Math.PI * i) / length),
+                    y: 0.25 * Math.sin((2 * Math.PI * i) / length),
                     z: 0,
                   })),
                 ),
                 color: makeColor("#7995fb", 0.8),
                 colors: [],
-                indices: rearrange(new Array(10).fill(0).map((_, i) => i)),
+                // Should make a flat-pointed star, LINE_LOOP should have a line across it
+                indices: rearrange(new Array(14).fill(0).map((_, i) => (i * 3) % 10)),
               },
               {
                 // non-indexed, vertex colors
                 type,
-                pose: xyzrpyToPose([1, 0.8 + typeIndex * 0.2, 0], [0, 0, 0]),
+                pose: xyzrpyToPose([0.8 + typeIndex * 0.2, 0.8 + typeIndex * 0.2, 0], [0, 0, 0]),
                 thickness: 5,
                 scale_invariant: true,
                 points: new Array(10).fill(0).map((_, i, { length }) => ({
-                  x: (0.8 * i) / (length - 1),
-                  y: 0.25 * Math.sin((2 * Math.PI * i) / (length - 1)),
+                  x: 0.25 * Math.cos((2 * Math.PI * i) / length),
+                  y: 0.25 * Math.sin((2 * Math.PI * i) / length),
                   z: 0,
                 })),
                 color: makeColor("#7995fb", 0.8),
@@ -193,13 +197,13 @@ function makeStoryScene({
               {
                 // indexed, vertex colors
                 type,
-                pose: xyzrpyToPose([1, 1.8 + typeIndex * 0.2, 0], [0, 0, 0]),
-                thickness: 5,
+                pose: xyzrpyToPose([0.8 + typeIndex * 0.2, 1.8 + typeIndex * 0.2, 0], [0, 0, 0]),
+                thickness: 4,
                 scale_invariant: true,
                 points: rearrange(
                   new Array(10).fill(0).map((_, i, { length }) => ({
-                    x: (0.8 * i) / (length - 1),
-                    y: 0.25 * Math.sin((2 * Math.PI * i) / (length - 1)),
+                    x: 0.25 * Math.cos((2 * Math.PI * i) / length),
+                    y: 0.25 * Math.sin((2 * Math.PI * i) / length),
                     z: 0,
                   })),
                 ),
@@ -212,7 +216,8 @@ function makeStoryScene({
                     return { r: r / 255, g: g / 255, b: b / 255, a };
                   }),
                 ),
-                indices: rearrange(new Array(10).fill(0).map((_, i) => i)),
+                // Should make a flat-pointed star, LINE_LOOP should have a line across it
+                indices: rearrange(new Array(14).fill(0).map((_, i) => (i * 3) % 10)),
               },
               {
                 // empty points
@@ -319,81 +324,522 @@ function makeStoryScene({
   };
 }
 
-BasicEntities.parameters = { colorScheme: "light", chromatic: { delay: 100 } };
-export function BasicEntities(): JSX.Element {
-  const topics: Topic[] = [
-    { name: "transforms", schemaName: "foxglove.FrameTransform" },
-    { name: "scene1", schemaName: "foxglove.SceneUpdate" },
-    { name: "scene2", schemaName: "foxglove.SceneUpdate" },
-  ];
+export const BasicEntities: StoryObj = {
+  render: function Story() {
+    const topics: Topic[] = [
+      { name: "transforms", schemaName: "foxglove.FrameTransform" },
+      { name: "scene1", schemaName: "foxglove.SceneUpdate" },
+      { name: "scene2", schemaName: "foxglove.SceneUpdate" },
+      { name: "scene3", schemaName: "foxglove.SceneUpdate" },
+    ];
 
-  const scene1 = makeStoryScene({ topic: "scene1", frameId: "frame1" });
-  const scene2 = makeStoryScene({ topic: "scene2", frameId: "frame2" });
+    const scene1 = makeStoryScene({ topic: "scene1", frameId: "frame1" });
+    const scene2 = makeStoryScene({ topic: "scene2", frameId: "frame2" });
+    const scene3 = makeStoryScene({ topic: "scene3", frameId: "frame3" });
 
-  const tf1: MessageEvent<FrameTransform> = {
-    topic: "transforms",
-    receiveTime: { sec: 10, nsec: 0 },
-    message: {
-      timestamp: { sec: 0, nsec: 0 },
-      parent_frame_id: "map",
-      child_frame_id: "root",
-      translation: { x: 1e7, y: 0, z: 0 },
-      rotation: QUAT_IDENTITY,
-    },
-    schemaName: "foxglove.FrameTransform",
-    sizeInBytes: 0,
-  };
-  const tf2: MessageEvent<FrameTransform> = {
-    topic: "transforms",
-    receiveTime: { sec: 10, nsec: 0 },
-    message: {
-      timestamp: { sec: 0, nsec: 0 },
-      parent_frame_id: "root",
-      child_frame_id: "frame1",
-      translation: { x: -4, y: -4, z: 0 },
-      rotation: QUAT_IDENTITY,
-    },
-    schemaName: "foxglove.FrameTransform",
-    sizeInBytes: 0,
-  };
-  const tf3: MessageEvent<FrameTransform> = {
-    topic: "transforms",
-    receiveTime: { sec: 10, nsec: 0 },
-    message: {
-      timestamp: { sec: 0, nsec: 0 },
-      parent_frame_id: "root",
-      child_frame_id: "frame2",
-      translation: { x: 0, y: -4, z: 0 },
-      rotation: QUAT_IDENTITY,
-    },
-    schemaName: "foxglove.FrameTransform",
-    sizeInBytes: 0,
-  };
+    const tf1: MessageEvent<FrameTransform> = {
+      topic: "transforms",
+      receiveTime: { sec: 10, nsec: 0 },
+      message: {
+        timestamp: { sec: 0, nsec: 0 },
+        parent_frame_id: "map",
+        child_frame_id: "root",
+        translation: { x: 1e7, y: 0, z: 0 },
+        rotation: QUAT_IDENTITY,
+      },
+      schemaName: "foxglove.FrameTransform",
+      sizeInBytes: 0,
+    };
+    const tf2: MessageEvent<FrameTransform> = {
+      topic: "transforms",
+      receiveTime: { sec: 10, nsec: 0 },
+      message: {
+        timestamp: { sec: 0, nsec: 0 },
+        parent_frame_id: "root",
+        child_frame_id: "frame1",
+        translation: { x: -5, y: -4, z: 0 },
+        rotation: QUAT_IDENTITY,
+      },
+      schemaName: "foxglove.FrameTransform",
+      sizeInBytes: 0,
+    };
+    const tf3: MessageEvent<FrameTransform> = {
+      topic: "transforms",
+      receiveTime: { sec: 10, nsec: 0 },
+      message: {
+        timestamp: { sec: -1, nsec: 0 },
+        parent_frame_id: "root",
+        child_frame_id: "frame2",
+        translation: { x: -1, y: -4, z: 0 },
+        rotation: QUAT_IDENTITY,
+      },
+      schemaName: "foxglove.FrameTransform",
+      sizeInBytes: 0,
+    };
+    const tf4: MessageEvent<FrameTransform> = {
+      topic: "transforms",
+      receiveTime: { sec: 10, nsec: 0 },
+      message: {
+        timestamp: { sec: -1, nsec: 0 },
+        parent_frame_id: "root",
+        child_frame_id: "frame3",
+        translation: { x: 3, y: -4, z: 0 },
+        rotation: QUAT_IDENTITY,
+      },
+      schemaName: "foxglove.FrameTransform",
+      sizeInBytes: 0,
+    };
 
-  const fixture = {
-    topics,
+    const fixture = {
+      topics,
+      frame: {
+        transforms: [tf1, tf2, tf3, tf4],
+        scene1: [scene1],
+        scene2: [scene2],
+        scene3: [scene3],
+      },
+      capabilities: [],
+      activeData: {
+        currentTime: { sec: 0, nsec: 0 },
+      },
+    };
+
+    return (
+      <PanelSetup fixture={fixture}>
+        <ThreeDeePanel
+          overrideConfig={{
+            ...ThreeDeePanel.defaultConfig,
+            followTf: "root",
+            layers: {
+              grid: { layerId: "foxglove.Grid" },
+            },
+            cameraState: {
+              distance: 14,
+              perspective: true,
+              phi: 40,
+              targetOffset: [0, 0, 0],
+              thetaOffset: rad2deg(-0.25),
+              fovy: 45,
+              near: 0.01,
+              far: 5000,
+              target: [0, 0, 0],
+              targetOrientation: [0, 0, 0, 1],
+            },
+            topics: {
+              scene1: { visible: true },
+              scene2: { visible: true, color: "#6324c7ff" },
+              scene3: { visible: true, showOutlines: false },
+            },
+          }}
+        />
+      </PanelSetup>
+    );
+  },
+
+  parameters: { colorScheme: "light", chromatic: { delay: 100 } },
+};
+
+// Sample data across two frames for testing `LINE_LOOP` primitives
+// each message contains two loops, one has points that make it a closed square
+// the other has points that make it an open square. They should both render as squares however
+// because we always close `LINE_LOOP` point arrays.
+const lineLoopSampleData = [
+  {
+    deletions: [
+      {
+        timestamp: {
+          sec: 23,
+          nsec: 0,
+        },
+        type: 1,
+        id: "",
+      },
+    ],
+    entities: [
+      {
+        timestamp: {
+          sec: 23,
+          nsec: 0,
+        },
+        frame_id: "test_frame",
+        id: "4",
+        lifetime: {
+          sec: 0,
+          nsec: 0,
+        },
+        frame_locked: true,
+        metadata: [],
+        arrows: [],
+        cubes: [],
+        spheres: [],
+        cylinders: [],
+        lines: [
+          {
+            type: 1,
+            pose: {
+              position: {
+                x: 0,
+                y: 0,
+                z: 0,
+              },
+              orientation: {
+                x: 0,
+                y: 0,
+                z: 0,
+                w: 1,
+              },
+            },
+            thickness: 1.5,
+            scale_invariant: true,
+            points: [
+              {
+                x: -0.5,
+                y: 0.7999999999999998,
+                z: 0,
+              },
+              {
+                x: 0.5,
+                y: 0.7999999999999998,
+                z: 0,
+              },
+              {
+                x: 0.5,
+                y: -0.20000000000000018,
+                z: 0,
+              },
+              {
+                x: -0.5,
+                y: -0.20000000000000018,
+                z: 0,
+              },
+              {
+                x: -0.5,
+                y: 0.7999999999999998,
+                z: 0,
+              },
+            ],
+            color: {
+              r: 1,
+              g: 1,
+              b: 1,
+              a: 1,
+            },
+            colors: [],
+            indices: [],
+          },
+        ],
+        triangles: [],
+        texts: [],
+        models: [],
+      },
+      {
+        timestamp: {
+          sec: 23,
+          nsec: 0,
+        },
+        frame_id: "test_frame",
+        id: "5",
+        lifetime: {
+          sec: 0,
+          nsec: 0,
+        },
+        frame_locked: true,
+        metadata: [],
+        arrows: [],
+        cubes: [],
+        spheres: [],
+        cylinders: [],
+        lines: [
+          {
+            type: 1,
+            pose: {
+              position: {
+                x: 0,
+                y: 0,
+                z: 0,
+              },
+              orientation: {
+                x: 0,
+                y: 0,
+                z: 0,
+                w: 1,
+              },
+            },
+            thickness: 1.5,
+            scale_invariant: true,
+            points: [
+              {
+                x: -0.20000000000000018,
+                y: 0.5,
+                z: 0,
+              },
+              {
+                x: 0.7999999999999998,
+                y: 0.5,
+                z: 0,
+              },
+              {
+                x: 0.7999999999999998,
+                y: -0.5,
+                z: 0,
+              },
+              {
+                x: -0.20000000000000018,
+                y: -0.5,
+                z: 0,
+              },
+            ],
+            color: {
+              r: 1,
+              g: 1,
+              b: 1,
+              a: 1,
+            },
+            colors: [],
+            indices: [],
+          },
+        ],
+        triangles: [],
+        texts: [],
+        models: [],
+      },
+    ],
+  },
+  {
+    deletions: [
+      {
+        timestamp: {
+          sec: 23,
+          nsec: 100000000,
+        },
+        type: 1,
+        id: "",
+      },
+    ],
+    entities: [
+      {
+        timestamp: {
+          sec: 23,
+          nsec: 100000000,
+        },
+        frame_id: "test_frame",
+        id: "4",
+        lifetime: {
+          sec: 0,
+          nsec: 0,
+        },
+        frame_locked: true,
+        metadata: [],
+        arrows: [],
+        cubes: [],
+        spheres: [],
+        cylinders: [],
+        lines: [
+          {
+            type: 1,
+            pose: {
+              position: {
+                x: 0,
+                y: 0,
+                z: 0,
+              },
+              orientation: {
+                x: 0,
+                y: 0,
+                z: 0,
+                w: 1,
+              },
+            },
+            thickness: 1.5,
+            scale_invariant: true,
+            points: [
+              {
+                x: -0.5,
+                y: 0.8599999999999999,
+                z: 0,
+              },
+              {
+                x: 0.5,
+                y: 0.8599999999999999,
+                z: 0,
+              },
+              {
+                x: 0.5,
+                y: -0.14000000000000012,
+                z: 0,
+              },
+              {
+                x: -0.5,
+                y: -0.14000000000000012,
+                z: 0,
+              },
+              {
+                x: -0.5,
+                y: 0.8599999999999999,
+                z: 0,
+              },
+            ],
+            color: {
+              r: 1,
+              g: 1,
+              b: 1,
+              a: 1,
+            },
+            colors: [],
+            indices: [],
+          },
+        ],
+        triangles: [],
+        texts: [],
+        models: [],
+      },
+      {
+        timestamp: {
+          sec: 23,
+          nsec: 100000000,
+        },
+        frame_id: "test_frame",
+        id: "5",
+        lifetime: {
+          sec: 0,
+          nsec: 0,
+        },
+        frame_locked: true,
+        metadata: [],
+        arrows: [],
+        cubes: [],
+        spheres: [],
+        cylinders: [],
+        lines: [
+          {
+            type: 1,
+            pose: {
+              position: {
+                x: 0,
+                y: 0,
+                z: 0,
+              },
+              orientation: {
+                x: 0,
+                y: 0,
+                z: 0,
+                w: 1,
+              },
+            },
+            thickness: 1.5,
+            scale_invariant: true,
+            points: [
+              {
+                x: -0.14000000000000012,
+                y: 0.5,
+                z: 0,
+              },
+              {
+                x: 0.8599999999999999,
+                y: 0.5,
+                z: 0,
+              },
+              {
+                x: 0.8599999999999999,
+                y: -0.5,
+                z: 0,
+              },
+              {
+                x: -0.14000000000000012,
+                y: -0.5,
+                z: 0,
+              },
+            ],
+            color: {
+              r: 1,
+              g: 1,
+              b: 1,
+              a: 1,
+            },
+            colors: [],
+            indices: [],
+          },
+        ],
+        triangles: [],
+        texts: [],
+        models: [],
+      },
+    ],
+  },
+];
+
+function LineLoops(): JSX.Element {
+  const readySignal = useReadySignal();
+
+  // We're testing a Line loop using a position buffer bigger than it needs from a previous frame
+  // So we need to test across multiple frames
+  const frames = useMemo(() => {
+    const frame1: MessageEvent<Partial<SceneUpdate>> = {
+      topic: "scene",
+      schemaName: "foxglove.SceneUpdate",
+      sizeInBytes: 0,
+      receiveTime: { sec: 10, nsec: 0 },
+      message: lineLoopSampleData[0]!,
+    };
+    const frame2: MessageEvent<Partial<SceneUpdate>> = {
+      topic: "scene",
+      schemaName: "foxglove.SceneUpdate",
+      sizeInBytes: 0,
+      receiveTime: { sec: 11, nsec: 0 },
+      message: lineLoopSampleData[1]!,
+    };
+    return [frame1, frame2];
+  }, []);
+
+  const [fixture, setFixture] = useState({
+    topics: [{ name: "scene", schemaName: "foxglove.SceneUpdate" }],
     frame: {
-      transforms: [tf1, tf2, tf3],
-      scene1: [scene1],
-      scene2: [scene2],
+      scene: [frames[0]!],
     },
     capabilities: [],
     activeData: {
-      currentTime: { sec: 0, nsec: 0 },
+      currentTime: { sec: 10, nsec: 0 },
+      isPlaying: true,
     },
-  };
+  });
+
+  useEffect(() => {
+    let timeOutID2: NodeJS.Timeout;
+
+    const timeOutID = setTimeout(() => {
+      setFixture((oldFixture) => {
+        const newFixture = { ...oldFixture };
+        newFixture.frame = {
+          scene: [frames[1]!],
+        };
+        newFixture.activeData = {
+          currentTime: { sec: 11, nsec: 0 },
+          isPlaying: true,
+        };
+        return newFixture;
+      });
+      timeOutID2 = setTimeout(() => {
+        readySignal();
+      }, 100);
+    }, 500);
+
+    return () => {
+      clearTimeout(timeOutID);
+      clearTimeout(timeOutID2);
+    };
+  }, [readySignal, frames]);
 
   return (
     <PanelSetup fixture={fixture}>
-      <ThreeDeeRender
+      <ThreeDeePanel
         overrideConfig={{
-          ...ThreeDeeRender.defaultConfig,
+          ...ThreeDeePanel.defaultConfig,
           followTf: "root",
           layers: {
             grid: { layerId: "foxglove.Grid" },
           },
           cameraState: {
-            distance: 12,
+            distance: 7,
             perspective: true,
             phi: 40,
             targetOffset: [0, 0, 0],
@@ -405,11 +851,23 @@ export function BasicEntities(): JSX.Element {
             targetOrientation: [0, 0, 0, 1],
           },
           topics: {
-            scene1: { visible: true },
-            scene2: { visible: true, color: "#6324c7ff" },
+            scene: { visible: true },
           },
         }}
       />
     </PanelSetup>
   );
 }
+// Tests `LinePrimitives` reusing of larger `#positionBuffers`. These squares move across frames and test
+// that we correctly handle the case where the `#positionBuffer` in `RenderableLines/LinePrimitiveRenderable` is bigger than
+// the number of points after a `SceneUpdate`
+export const UpdatedLineLoopsDontHaveExtraLines: StoryObj = {
+  parameters: {
+    useReadySignal: true,
+    colorScheme: "dark",
+  },
+  render: LineLoops,
+  play: async (ctx) => {
+    await ctx.parameters.storyReady;
+  },
+};

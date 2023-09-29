@@ -5,7 +5,7 @@
 import * as Comlink from "comlink";
 
 import { abortSignalTransferHandler } from "@foxglove/comlink-transfer-handlers";
-import { MessageEvent, Time } from "@foxglove/studio";
+import { Immutable, MessageEvent, Time } from "@foxglove/studio";
 
 import type {
   GetBackfillMessagesArgs,
@@ -14,40 +14,43 @@ import type {
   Initalization,
   IteratorResult,
   MessageIteratorArgs,
+  IterableSourceInitializeArgs,
 } from "./IIterableSource";
-import type {
-  WorkerIterableSourceWorker,
-  WorkerIterableSourceWorkerArgs,
-} from "./WorkerIterableSourceWorker.worker";
+import type { WorkerIterableSourceWorker } from "./WorkerIterableSourceWorker";
 
 Comlink.transferHandlers.set("abortsignal", abortSignalTransferHandler);
 
+type ConstructorArgs = {
+  initWorker: () => Worker;
+  initArgs: IterableSourceInitializeArgs;
+};
+
 export class WorkerIterableSource implements IIterableSource {
-  private readonly _args: WorkerIterableSourceWorkerArgs;
+  readonly #args: ConstructorArgs;
 
-  private _thread?: Worker;
-  private _worker?: Comlink.Remote<WorkerIterableSourceWorker>;
+  #thread?: Worker;
+  #worker?: Comlink.Remote<WorkerIterableSourceWorker>;
 
-  public constructor(args: WorkerIterableSourceWorkerArgs) {
-    this._args = args;
+  public constructor(args: ConstructorArgs) {
+    this.#args = args;
   }
 
   public async initialize(): Promise<Initalization> {
     // Note: this launches the worker.
-    this._thread = new Worker(new URL("./WorkerIterableSourceWorker.worker", import.meta.url));
+    this.#thread = this.#args.initWorker();
 
-    const Wrapped = Comlink.wrap<
-      new (args: WorkerIterableSourceWorkerArgs) => WorkerIterableSourceWorker
-    >(this._thread);
+    const initialize = Comlink.wrap<
+      (args: IterableSourceInitializeArgs) => Comlink.Remote<WorkerIterableSourceWorker>
+    >(this.#thread);
 
-    const worker = (this._worker = await new Wrapped(this._args));
+    const worker = (this.#worker = await initialize(this.#args.initArgs));
     return await worker.initialize();
   }
 
   public async *messageIterator(
     args: MessageIteratorArgs,
   ): AsyncIterableIterator<Readonly<IteratorResult>> {
-    if (this._worker == undefined) {
+    if (this.#worker == undefined) {
       throw new Error(`WorkerIterableSource is not initialized`);
     }
 
@@ -69,10 +72,8 @@ export class WorkerIterableSource implements IIterableSource {
     }
   }
 
-  public async getBackfillMessages(
-    args: GetBackfillMessagesArgs,
-  ): Promise<MessageEvent<unknown>[]> {
-    if (this._worker == undefined) {
+  public async getBackfillMessages(args: GetBackfillMessagesArgs): Promise<MessageEvent[]> {
+    if (this.#worker == undefined) {
       throw new Error(`WorkerIterableSource is not initialized`);
     }
 
@@ -80,11 +81,13 @@ export class WorkerIterableSource implements IIterableSource {
     // to our worker getBackfillMessages call. Our installed Comlink handler for AbortSignal handles
     // making the abort signal available within the worker.
     const { abortSignal, ...rest } = args;
-    return await this._worker.getBackfillMessages(rest, abortSignal);
+    return await this.#worker.getBackfillMessages(rest, abortSignal);
   }
 
-  public getMessageCursor(args: MessageIteratorArgs & { abort?: AbortSignal }): IMessageCursor {
-    if (this._worker == undefined) {
+  public getMessageCursor(
+    args: Immutable<MessageIteratorArgs & { abort?: AbortSignal }>,
+  ): IMessageCursor {
+    if (this.#worker == undefined) {
       throw new Error(`WorkerIterableSource is not initialized`);
     }
 
@@ -92,7 +95,7 @@ export class WorkerIterableSource implements IIterableSource {
     // to our worker getBackfillMessages call. Our installed Comlink handler for AbortSignal handles
     // making the abort signal available within the worker.
     const { abort, ...rest } = args;
-    const messageCursorPromise = this._worker.getMessageCursor(rest, abort);
+    const messageCursorPromise = this.#worker.getMessageCursor(rest, abort);
 
     const cursor: IMessageCursor = {
       async next() {
@@ -124,6 +127,6 @@ export class WorkerIterableSource implements IIterableSource {
   }
 
   public async terminate(): Promise<void> {
-    this._thread?.terminate();
+    this.#thread?.terminate();
   }
 }

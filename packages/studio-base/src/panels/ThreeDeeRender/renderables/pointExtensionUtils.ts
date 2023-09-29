@@ -2,11 +2,13 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import { t } from "i18next";
 import * as THREE from "three";
 
 import { PackedElementField, PointCloud } from "@foxglove/schemas";
 import { SettingsTreeNode, Topic } from "@foxglove/studio";
 import { DynamicBufferGeometry } from "@foxglove/studio-base/panels/ThreeDeeRender/DynamicBufferGeometry";
+import { IRenderer } from "@foxglove/studio-base/panels/ThreeDeeRender/IRenderer";
 import { BaseUserData, Renderable } from "@foxglove/studio-base/panels/ThreeDeeRender/Renderable";
 import { rgbaToCssString } from "@foxglove/studio-base/panels/ThreeDeeRender/color";
 import { isSupportedField } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/pointClouds/fieldReaders";
@@ -15,18 +17,18 @@ import {
   MISSING_TRANSFORM,
 } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/transforms";
 import { BaseSettings } from "@foxglove/studio-base/panels/ThreeDeeRender/settings";
-import { MAX_DURATION, Pose } from "@foxglove/studio-base/panels/ThreeDeeRender/transforms";
+import { MAX_DURATION } from "@foxglove/studio-base/panels/ThreeDeeRender/transforms";
 import { updatePose } from "@foxglove/studio-base/panels/ThreeDeeRender/updatePose";
 
 import { LaserScanMaterial } from "./LaserScans";
 import {
-  baseColorModeSettingsNode,
+  colorModeSettingsFields,
   colorHasTransparency,
   ColorModeSettings,
   FS_SRGB_TO_LINEAR,
   INTENSITY_FIELDS,
   RGBA_PACKED_FIELDS,
-} from "./pointClouds/colors";
+} from "./colorMode";
 import { POINTCLOUD_DATATYPES as FOXGLOVE_POINTCLOUD_DATATYPES } from "../foxglove";
 import { PointCloud2, POINTCLOUD_DATATYPES as ROS_POINTCLOUD_DATATYPES, PointField } from "../ros";
 
@@ -62,10 +64,6 @@ export const DEFAULT_POINT_SETTINGS: LayerSettingsPointExtension = {
 };
 
 export const POINT_CLOUD_REQUIRED_FIELDS = ["x", "y", "z"];
-export const POINT_SHAPE_OPTIONS = [
-  { label: "Circle", value: "circle" },
-  { label: "Square", value: "square" },
-];
 
 /**
  * Creates settings node for Point cloud and scan topics
@@ -85,35 +83,49 @@ export function pointSettingsNode(
   const pointShape = config.pointShape ?? "circle";
   const decayTime = config.decayTime;
 
-  const node = baseColorModeSettingsNode(messageFields, config, topic, defaultSettings, {
-    supportsPackedRgbModes: ROS_POINTCLOUD_DATATYPES.has(topic.schemaName),
-    supportsRgbaFieldsMode: FOXGLOVE_POINTCLOUD_DATATYPES.has(topic.schemaName),
+  const colorModeFields = colorModeSettingsFields({
+    msgFields: messageFields,
+    config,
+    defaults: defaultSettings,
+    modifiers: {
+      supportsPackedRgbModes: ROS_POINTCLOUD_DATATYPES.has(topic.schemaName),
+      supportsRgbaFieldsMode: FOXGLOVE_POINTCLOUD_DATATYPES.has(topic.schemaName),
+    },
   });
-  node.fields = {
-    pointSize: {
-      label: "Point size",
-      input: "number",
-      step: 1,
-      placeholder: "2",
-      precision: 2,
-      value: pointSize,
+
+  const node: SettingsTreeNode = {
+    order: topic.name.toLocaleLowerCase(),
+    visible: config.visible ?? defaultSettings.visible,
+    fields: {
+      pointSize: {
+        label: t("threeDee:pointSize"),
+        input: "number",
+        step: 1,
+        placeholder: "2",
+        precision: 2,
+        value: pointSize,
+        min: 0,
+      },
+      pointShape: {
+        label: t("threeDee:pointShape"),
+        input: "select",
+        options: [
+          { label: t("threeDee:pointShapeCircle"), value: "circle" },
+          { label: t("threeDee:pointShapeSquare"), value: "square" },
+        ],
+        value: pointShape,
+      },
+      decayTime: {
+        label: t("threeDee:decayTime"),
+        input: "number",
+        step: 0.5,
+        placeholder: t("threeDee:decayTimeDefaultZeroSeconds"),
+        min: 0,
+        precision: 3,
+        value: decayTime,
+      },
+      ...colorModeFields,
     },
-    pointShape: {
-      label: "Point shape",
-      input: "select",
-      options: POINT_SHAPE_OPTIONS,
-      value: pointShape,
-    },
-    decayTime: {
-      label: "Decay time",
-      input: "number",
-      step: 0.5,
-      placeholder: "0 seconds",
-      min: 0,
-      precision: 3,
-      value: decayTime,
-    },
-    ...node.fields,
   };
 
   return node;
@@ -193,8 +205,6 @@ export function createGeometry(topic: string, usage: THREE.Usage): DynamicBuffer
 }
 
 type Material = THREE.PointsMaterial | LaserScanMaterial;
-type Points = THREE.Points<DynamicBufferGeometry, Material>;
-export type PointsAtTime = { receiveTime: bigint; messageTime: bigint; points: Points };
 
 export function pointCloudColorEncoding<T extends LayerSettingsPointExtension>(
   settings: T,
@@ -212,24 +222,45 @@ export function pointCloudColorEncoding<T extends LayerSettingsPointExtension>(
   }
 }
 
-export function createPoints(
-  topic: string,
-  pose: Pose,
-  geometry: DynamicBufferGeometry,
-  material: Material,
-  pickingMaterial: THREE.Material,
-  instancePickingMaterial: THREE.Material | undefined,
-): Points {
-  const points = new THREE.Points<DynamicBufferGeometry, Material>(geometry, material);
-  // We don't calculate the bounding sphere for points, so frustum culling is disabled
-  points.frustumCulled = false;
-  points.name = `${topic}:PointCloud:points`;
-  points.userData = {
-    pickingMaterial,
-    instancePickingMaterial,
-    pose,
-  };
-  return points;
+export class PointsRenderable<TUserData extends BaseUserData = BaseUserData> extends Renderable<
+  TUserData,
+  /*TRenderer=*/ undefined
+> {
+  #points: THREE.Points<DynamicBufferGeometry, Material>;
+  public readonly geometry: DynamicBufferGeometry;
+  public override pickableInstances = true;
+
+  public constructor(
+    name: string,
+    userData: TUserData,
+    geometry: DynamicBufferGeometry,
+    material: Material,
+    pickingMaterial: THREE.Material,
+    instancePickingMaterial: THREE.Material,
+  ) {
+    super(name, undefined, userData);
+    this.geometry = geometry;
+
+    const points = new THREE.Points<DynamicBufferGeometry, Material>(geometry, material);
+    // We don't calculate the bounding sphere for points, so frustum culling is disabled
+    points.frustumCulled = false;
+    points.name = `${userData.topic}:PointCloud:points`;
+    points.userData = {
+      pickingMaterial,
+      instancePickingMaterial,
+      pose: userData.pose,
+    };
+    this.#points = points;
+    this.add(points);
+  }
+
+  public override dispose(): void {
+    this.#points.geometry.dispose();
+  }
+
+  public updateMaterial(material: Material): void {
+    this.#points.material = material;
+  }
 }
 
 // Fragment shader chunk to convert sRGB to linear RGB
@@ -264,7 +295,7 @@ export function pointCloudMaterial<T extends LayerSettingsPointExtension>(
   // Tell three.js to recompile the shader when `shape` or `encoding` change
   material.customProgramCacheKey = () => `${shape}-${encoding}`;
   material.onBeforeCompile = (shader) => {
-    const SEARCH = "#include <output_fragment>";
+    const SEARCH = "#include <opaque_fragment>";
     if (shape === "circle") {
       // Patch the fragment shader to render points as circles
       shader.fragmentShader = shader.fragmentShader.replace(SEARCH, FS_POINTCLOUD_CIRCLE + SEARCH);
@@ -340,66 +371,73 @@ export function createInstancePickingMaterial<T extends LayerSettingsPointExtens
   });
 }
 
-type PointHistoryUserData = BaseUserData & {
+type RenderObjectHistoryUserData = BaseUserData & {
   topic: string;
   settings: LayerSettingsPointExtension;
-  pointsHistory: PointsAtTime[];
-  material: THREE.Material;
-  pickingMaterial: THREE.Material;
+};
+
+type DisposableObject = THREE.Object3D & { dispose(): void };
+type HistoryEntry<TRenderable extends DisposableObject> = {
+  receiveTime: bigint;
+  messageTime: bigint;
+  renderable: TRenderable;
 };
 
 /**
- * Parent class renderable that handles lifecycle of points history over the decay time
- * This class only handles updating, and end of life of the points history and its geometry.
- * Creation of new points in the history is handled by the child Renderable classes.
+ * Class that handles lifecycle of 3d object history over the decay time
+ * This class encapsulates the functionality of showing the history of an object within a specified decay time.
+ * Meant to be extensible for all kinds of renderables that need to show old points over decay time.
  * See LaserScansRenderable and PointCloudsRenderable for examples.
  */
-export class PointsHistoryRenderable<
-  UserData extends PointHistoryUserData,
-> extends Renderable<UserData> {
-  public override dispose(): void {
-    for (const entry of this.userData.pointsHistory) {
-      entry.points.geometry.dispose();
-    }
-    this.userData.pointsHistory.length = 0;
+export class RenderObjectHistory<TRenderable extends DisposableObject> {
+  #history: HistoryEntry<TRenderable>[];
+  #parentRenderable: Renderable<RenderObjectHistoryUserData>;
+  #renderer: IRenderer;
 
-    super.dispose();
+  public constructor({
+    initial,
+    renderer,
+    parentRenderable,
+  }: {
+    initial: HistoryEntry<TRenderable>;
+    renderer: IRenderer;
+    parentRenderable: Renderable<RenderObjectHistoryUserData>;
+  }) {
+    this.#history = [initial];
+    this.#renderer = renderer;
+    this.#parentRenderable = parentRenderable;
   }
 
-  public startFrame(currentTime: bigint, renderFrameId: string, fixedFrameId: string): void {
-    const path = this.userData.settingsPath;
+  public addHistoryEntry(entry: HistoryEntry<TRenderable>): void {
+    this.#history.push(entry);
+  }
 
-    this.visible = this.userData.settings.visible;
-    if (!this.visible) {
-      this.renderer.settings.errors.clearPath(path);
-      const pointsHistory = this.userData.pointsHistory;
-      // removes all but the last element of the array, which would be the current point
-      for (const entry of pointsHistory.splice(0, pointsHistory.length - 1)) {
-        entry.points.geometry.dispose();
-        this.remove(entry.points);
-      }
-      return;
-    }
+  public forEach(callback: (entry: HistoryEntry<TRenderable>) => void): void {
+    this.#history.forEach(callback);
+  }
 
+  public updateHistoryFromCurrentTime(currentTime: bigint): void {
     // Remove expired entries from the history of points when decayTime is enabled
-    const pointsHistory = this.userData.pointsHistory;
-    const decayTime = this.userData.settings.decayTime;
+    const pointsHistory = this.#history;
+    const decayTime = this.#parentRenderable.userData.settings.decayTime;
     const expireTime =
       decayTime > 0 ? currentTime - BigInt(Math.round(decayTime * 1e9)) : MAX_DURATION;
     while (pointsHistory.length > 1 && pointsHistory[0]!.receiveTime < expireTime) {
-      const entry = this.userData.pointsHistory.shift()!;
-      this.remove(entry.points);
-      entry.points.geometry.dispose();
+      const entry = this.#history.shift()!;
+      this.#parentRenderable.remove(entry.renderable);
+      entry.renderable.dispose();
     }
+  }
 
-    // Update the pose on each THREE.Points entry
+  public updatePoses(currentTime: bigint, renderFrameId: string, fixedFrameId: string): void {
+    // Update the pose on each entry
     let hadTfError = false;
-    for (const entry of pointsHistory) {
-      const srcTime = entry.messageTime; // frameLocked is false, so use TFs from the original message timestamp
-      const frameId = this.userData.frameId;
+    for (const entry of this.#history) {
+      const srcTime = entry.messageTime;
+      const frameId = this.#parentRenderable.userData.frameId;
       const updated = updatePose(
-        entry.points,
-        this.renderer.transformTree,
+        entry.renderable,
+        this.#renderer.transformTree,
         renderFrameId,
         fixedFrameId,
         frameId,
@@ -408,13 +446,35 @@ export class PointsHistoryRenderable<
       );
       if (!updated && !hadTfError) {
         const message = missingTransformMessage(renderFrameId, fixedFrameId, frameId);
-        this.renderer.settings.errors.add(path, MISSING_TRANSFORM, message);
+        this.#renderer.settings.errors.add(
+          this.#parentRenderable.userData.settingsPath,
+          MISSING_TRANSFORM,
+          message,
+        );
         hadTfError = true;
       }
     }
+  }
 
-    if (!hadTfError) {
-      this.renderer.settings.errors.remove(path, MISSING_TRANSFORM);
+  public latest(): HistoryEntry<TRenderable> {
+    if (this.#history.length === 0) {
+      throw new Error("RenderObjectHistory is empty");
     }
+    return this.#history[this.#history.length - 1]!;
+  }
+
+  /** Removes all but the last renderable, which would be the current object used in rendering. */
+  public clearHistory(): void {
+    for (const entry of this.#history.splice(0, this.#history.length - 1)) {
+      entry.renderable.dispose();
+      this.#parentRenderable.remove(entry.renderable);
+    }
+  }
+
+  public dispose(): void {
+    for (const entry of this.#history) {
+      entry.renderable.dispose();
+    }
+    this.#history.length = 0;
   }
 }

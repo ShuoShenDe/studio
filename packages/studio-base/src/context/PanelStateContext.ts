@@ -3,17 +3,12 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import { createContext } from "react";
-import { DeepReadonly } from "ts-essentials";
-import { useStore, StoreApi } from "zustand";
+import { StoreApi, useStore } from "zustand";
 
-import { RenderState, SettingsTree } from "@foxglove/studio";
-import useGuaranteedContext from "@foxglove/studio-base/hooks/useGuaranteedContext";
+import { useGuaranteedContext } from "@foxglove/hooks";
+import { Immutable, SettingsTree } from "@foxglove/studio";
 
-export type ImmutableSettingsTree = DeepReadonly<SettingsTree>;
-
-export type SharedPanelState = RenderState["sharedPanelState"];
-
-type PanelType = string;
+export type ImmutableSettingsTree = Immutable<SettingsTree>;
 
 export type PanelStateStore = {
   /**
@@ -32,11 +27,6 @@ export type PanelStateStore = {
   defaultTitles: Record<string, string | undefined>;
 
   /**
-   * Transient state shared between panels, keyed by panel type.
-   */
-  sharedPanelState: Record<PanelType, SharedPanelState>;
-
-  /**
    * Increments the sequence number for the panel, forcing a remount.
    */
   incrementSequenceNumber: (panelId: string) => void;
@@ -48,19 +38,11 @@ export type PanelStateStore = {
 
   /** Updates the default title for the given panel. */
   updateDefaultTitle: (panelId: string, title: string | undefined) => void;
-
-  /**
-   * Update the transient state associated with a particular panel type.
-   */
-  updateSharedPanelState: (type: PanelType, data: SharedPanelState) => void;
 };
 
 export const PanelStateContext = createContext<undefined | StoreApi<PanelStateStore>>(undefined);
 
-export function usePanelStateStore<T>(
-  selector: (store: PanelStateStore) => T,
-  equalityFn?: (a: T, b: T) => boolean,
-): T {
+export function usePanelStateStore<T>(selector: (store: PanelStateStore) => T): T {
   const context = useGuaranteedContext(PanelStateContext);
-  return useStore(context, selector, equalityFn);
+  return useStore(context, selector);
 }

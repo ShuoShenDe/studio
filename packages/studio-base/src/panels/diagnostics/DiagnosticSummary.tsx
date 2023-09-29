@@ -13,19 +13,25 @@
 
 import PushPinIcon from "@mui/icons-material/PushPin";
 import {
+  IconButton,
+  InputBase,
   ListItem,
-  ListItemText,
-  styled as muiStyled,
   ListItemButton,
+  ListItemText,
   MenuItem,
   Select,
-  InputBase,
-  IconButton,
+  Typography,
+  iconButtonClasses,
+  inputBaseClasses,
+  listItemTextClasses,
+  selectClasses,
 } from "@mui/material";
-import produce from "immer";
-import { compact, set, uniq } from "lodash";
-import { useCallback, useEffect, useMemo } from "react";
-import { List, AutoSizer, ListRowProps } from "react-virtualized";
+import { produce } from "immer";
+import * as _ from "lodash-es";
+import { CSSProperties, useCallback, useEffect, useMemo } from "react";
+import { AutoSizer } from "react-virtualized";
+import { FixedSizeList as List } from "react-window";
+import { makeStyles } from "tss-react/mui";
 
 import { filterMap } from "@foxglove/den/collection";
 import { SettingsTreeAction } from "@foxglove/studio";
@@ -36,19 +42,22 @@ import { usePanelContext } from "@foxglove/studio-base/components/PanelContext";
 import PanelToolbar from "@foxglove/studio-base/components/PanelToolbar";
 import Stack from "@foxglove/studio-base/components/Stack";
 import useDiagnostics from "@foxglove/studio-base/panels/diagnostics/useDiagnostics";
+import useStaleTime from "@foxglove/studio-base/panels/diagnostics/useStaleTime";
 import { usePanelSettingsTreeUpdate } from "@foxglove/studio-base/providers/PanelStateContextProvider";
 import { SaveConfig } from "@foxglove/studio-base/types/panels";
 import toggle from "@foxglove/studio-base/util/toggle";
 
 import { buildSummarySettingsTree } from "./settings";
 import {
-  DiagnosticSummaryConfig,
+  DEFAULT_SECONDS_UNTIL_STALE,
   DiagnosticInfo,
   DiagnosticStatusConfig,
-  getDiagnosticsByLevel,
-  filterAndSortDiagnostics,
-  LEVEL_NAMES,
+  DiagnosticSummaryConfig,
   KNOWN_LEVELS,
+  LEVEL_NAMES,
+  filterAndSortDiagnostics,
+  getDiagnosticsByLevel,
+  getDiagnosticsWithStales,
 } from "./util";
 
 type NodeRowProps = {
@@ -65,43 +74,41 @@ const MESSAGE_COLORS: { [key: string]: string } = {
   stale: "text.secondary",
 };
 
-const StyledListItemButton = muiStyled(ListItemButton, {
-  shouldForwardProp: (prop) => prop !== "isPinned",
-})<{
-  isPinned: boolean;
-}>(({ isPinned, theme }) => ({
-  padding: 0,
+const useStyles = makeStyles()((theme) => ({
+  listItemButton: {
+    padding: 0,
 
-  ".MuiIconButton-root": {
-    visibility: isPinned ? "visibile" : "hidden",
+    [`.${iconButtonClasses.root}`]: {
+      visibility: "hidden",
 
-    "&:hover": {
-      backgroundColor: "transparent",
+      "&:hover": {
+        backgroundColor: "transparent",
+      },
+    },
+    [`.${listItemTextClasses.root}`]: {
+      gap: theme.spacing(1),
+      display: "flex",
+    },
+    [`&:hover .${iconButtonClasses.root}`]: {
+      visibility: "visible",
     },
   },
-  ".MuiListItemText-root": {
-    gap: theme.spacing(1),
-    display: "flex",
-  },
-  "&:hover .MuiIconButton-root": {
-    visibility: "visible",
-  },
-}));
-
-const StyledSelect = muiStyled(Select)(() => ({
-  ".MuiInputBase-input.MuiSelect-select.MuiInputBase-inputSizeSmall": {
-    paddingTop: 0,
-    paddingBottom: 0,
-    minWidth: 40,
-  },
-  ".MuiListItemText-root": {
-    marginTop: 0,
-    marginBottom: 0,
+  select: {
+    [`.${inputBaseClasses.input}.${selectClasses.select}.${inputBaseClasses.inputSizeSmall}`]: {
+      paddingTop: 0,
+      paddingBottom: 0,
+      minWidth: 40,
+    },
+    [`.${listItemTextClasses.root}`]: {
+      marginTop: 0,
+      marginBottom: 0,
+    },
   },
 }));
 
 const NodeRow = React.memo(function NodeRow(props: NodeRowProps) {
   const { info, isPinned, onClick, onClickPin } = props;
+  const { classes } = useStyles();
 
   const handleClick = useCallback(() => {
     onClick(info);
@@ -115,13 +122,14 @@ const NodeRow = React.memo(function NodeRow(props: NodeRowProps) {
 
   return (
     <ListItem dense disablePadding data-testid-diagnostic-row>
-      <StyledListItemButton disableGutters isPinned={isPinned} onClick={handleClick}>
+      <ListItemButton className={classes.listItemButton} disableGutters onClick={handleClick}>
         <IconButton
           size="small"
           onClick={(event) => {
             handleClickPin();
             event.stopPropagation();
           }}
+          style={isPinned ? { visibility: "visible" } : undefined}
         >
           <PushPinIcon fontSize="small" color={isPinned ? "inherit" : "disabled"} />
         </IconButton>
@@ -131,8 +139,9 @@ const NodeRow = React.memo(function NodeRow(props: NodeRowProps) {
           secondaryTypographyProps={{
             color: MESSAGE_COLORS[levelName ?? "stale"],
           }}
+          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
         />
-      </StyledListItemButton>
+      </ListItemButton>
     </ListItem>
   );
 });
@@ -150,10 +159,19 @@ const ALLOWED_DATATYPES: string[] = [
 
 function DiagnosticSummary(props: Props): JSX.Element {
   const { config, saveConfig } = props;
+  const { classes } = useStyles();
   const { topics } = useDataSourceInfo();
-  const { minLevel, topicToRender, pinnedIds, hardwareIdFilter, sortByLevel = true } = config;
+  const {
+    minLevel,
+    topicToRender,
+    pinnedIds,
+    hardwareIdFilter,
+    sortByLevel = true,
+    secondsUntilStale = DEFAULT_SECONDS_UNTIL_STALE,
+  } = config;
   const { openSiblingPanel } = usePanelContext();
   const updatePanelSettingsTree = usePanelSettingsTreeUpdate();
+  const staleTime = useStaleTime(secondsUntilStale);
 
   const togglePinned = useCallback(
     (info: DiagnosticInfo) => {
@@ -172,7 +190,7 @@ function DiagnosticSummary(props: Props): JSX.Element {
             selectedName: info.status.name,
             topicToRender,
             collapsedSections: [],
-          } as DiagnosticStatusConfig),
+          }) as DiagnosticStatusConfig,
         updateIfExists: true,
       });
     },
@@ -180,16 +198,18 @@ function DiagnosticSummary(props: Props): JSX.Element {
   );
 
   const renderRow = useCallback(
-    // eslint-disable-next-line react/no-unused-prop-types
-    ({ item, key }: ListRowProps & { item: DiagnosticInfo }) => {
+    (renderProps: { data: DiagnosticInfo[]; index: number; style: CSSProperties }) => {
+      const item = renderProps.data[renderProps.index]!;
       return (
-        <NodeRow
-          key={key}
-          info={item}
-          isPinned={pinnedIds.includes(item.id)}
-          onClick={showDetails}
-          onClickPin={togglePinned}
-        />
+        <div style={{ ...renderProps.style }}>
+          <NodeRow
+            key={item.id}
+            info={item}
+            isPinned={pinnedIds.includes(item.id)}
+            onClick={showDetails}
+            onClickPin={togglePinned}
+          />
+        </div>
       );
     },
     [pinnedIds, showDetails, togglePinned],
@@ -198,11 +218,13 @@ function DiagnosticSummary(props: Props): JSX.Element {
   // Filter down all topics to those that conform to our supported datatypes
   const availableTopics = useMemo(() => {
     const filtered = topics
-      .filter((topic) => ALLOWED_DATATYPES.includes(topic.schemaName))
+      .filter(
+        (topic) => topic.schemaName != undefined && ALLOWED_DATATYPES.includes(topic.schemaName),
+      )
       .map((topic) => topic.name);
 
     // Keeps only the first occurrence of each topic.
-    return uniq([...filtered]);
+    return _.uniq([...filtered]);
   }, [topics]);
 
   // If the topicToRender is not in the availableTopics, then we should not try to use it
@@ -212,8 +234,12 @@ function DiagnosticSummary(props: Props): JSX.Element {
 
   const diagnostics = useDiagnostics(diagnosticTopic);
 
+  const diagnosticsWithOldMarkedAsStales = useMemo(() => {
+    return staleTime ? getDiagnosticsWithStales(diagnostics, staleTime) : diagnostics;
+  }, [diagnostics, staleTime]);
+
   const summary = useMemo(() => {
-    if (diagnostics.size === 0) {
+    if (diagnosticsWithOldMarkedAsStales.size === 0) {
       return (
         <EmptyState>
           Waiting for <code>{topicToRender}</code> messages
@@ -221,15 +247,15 @@ function DiagnosticSummary(props: Props): JSX.Element {
       );
     }
     const pinnedNodes = filterMap(pinnedIds, (id) => {
-      const [_, trimmedHardwareId, name] = id.split("|");
+      const [, trimmedHardwareId, name] = id.split("|");
       if (name == undefined || trimmedHardwareId == undefined) {
         return;
       }
-      const diagnosticsByName = diagnostics.get(trimmedHardwareId);
+      const diagnosticsByName = diagnosticsWithOldMarkedAsStales.get(trimmedHardwareId);
       return diagnosticsByName?.get(name);
     });
 
-    const nodesByLevel = getDiagnosticsByLevel(diagnostics);
+    const nodesByLevel = getDiagnosticsByLevel(diagnosticsWithOldMarkedAsStales);
     const levels = Array.from(nodesByLevel.keys()).sort().reverse();
     const sortedNodes = sortByLevel
       ? ([] as DiagnosticInfo[]).concat(
@@ -243,7 +269,7 @@ function DiagnosticSummary(props: Props): JSX.Element {
           pinnedIds,
         );
 
-    const nodes: DiagnosticInfo[] = [...compact(pinnedNodes), ...sortedNodes].filter(
+    const nodes: DiagnosticInfo[] = [..._.compact(pinnedNodes), ...sortedNodes].filter(
       ({ status }) => status.level >= minLevel,
     );
     if (nodes.length === 0) {
@@ -256,15 +282,25 @@ function DiagnosticSummary(props: Props): JSX.Element {
             width={width}
             height={height}
             style={{ outline: "none" }}
-            rowHeight={30}
-            rowRenderer={(rowProps) => renderRow({ ...rowProps, item: nodes[rowProps.index]! })}
-            rowCount={nodes.length}
-            overscanRowCount={10}
-          />
+            itemSize={30}
+            itemData={nodes}
+            itemCount={nodes.length}
+            overscanCount={10}
+          >
+            {renderRow}
+          </List>
         )}
       </AutoSizer>
     );
-  }, [diagnostics, hardwareIdFilter, pinnedIds, renderRow, sortByLevel, minLevel, topicToRender]);
+  }, [
+    diagnosticsWithOldMarkedAsStales,
+    hardwareIdFilter,
+    pinnedIds,
+    renderRow,
+    sortByLevel,
+    minLevel,
+    topicToRender,
+  ]);
 
   const actionHandler = useCallback(
     (action: SettingsTreeAction) => {
@@ -273,7 +309,7 @@ function DiagnosticSummary(props: Props): JSX.Element {
       }
 
       const { path, value } = action.payload;
-      saveConfig(produce<DiagnosticSummaryConfig>((draft) => set(draft, path.slice(1), value)));
+      saveConfig(produce<DiagnosticSummaryConfig>((draft) => _.set(draft, path.slice(1), value)));
     },
     [saveConfig],
   );
@@ -289,30 +325,31 @@ function DiagnosticSummary(props: Props): JSX.Element {
     <Stack flex="auto">
       <PanelToolbar>
         <Stack flex="auto" direction="row" gap={1}>
-          <StyledSelect
+          <Select
+            className={classes.select}
             value={minLevel}
             id="status-filter-menu"
             color="secondary"
             size="small"
-            onChange={(event) => saveConfig({ minLevel: event.target.value as number })}
+            onChange={(event) => {
+              saveConfig({ minLevel: event.target.value as number });
+            }}
             MenuProps={{ MenuListProps: { dense: true } }}
           >
             {KNOWN_LEVELS.map((level) => (
               <MenuItem key={level} value={level}>
-                <ListItemText
-                  primary={LEVEL_NAMES[level]?.toUpperCase()}
-                  primaryTypographyProps={{
-                    variant: "inherit",
-                    color: MESSAGE_COLORS[LEVEL_NAMES[level] ?? "stale"],
-                  }}
-                />
+                <Typography variant="inherit" color={MESSAGE_COLORS[LEVEL_NAMES[level] ?? "stale"]}>
+                  {LEVEL_NAMES[level]?.toUpperCase()}
+                </Typography>
               </MenuItem>
             ))}
-          </StyledSelect>
+          </Select>
           <InputBase
             value={hardwareIdFilter}
             placeholder="Filter"
-            onChange={(e) => saveConfig({ hardwareIdFilter: e.target.value })}
+            onChange={(e) => {
+              saveConfig({ hardwareIdFilter: e.target.value });
+            }}
             style={{ flex: "auto", font: "inherit" }}
           />
         </Stack>

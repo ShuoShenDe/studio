@@ -11,7 +11,6 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import UrlSearchParams from "url-search-params";
 import util from "util";
 
 import setImmediate from "@foxglove/studio-base/util/setImmediate";
@@ -24,8 +23,6 @@ function noOp() {
 
 if (typeof window !== "undefined") {
   global.TextDecoder = util.TextDecoder as typeof TextDecoder;
-  // polyfill URLSearchParams in jsdom
-  window.URLSearchParams = UrlSearchParams;
 
   if (typeof window.URL.createObjectURL === "undefined") {
     Object.defineProperty(window.URL, "createObjectURL", { value: noOp });
@@ -43,10 +40,10 @@ global.React = require("react");
 
 // Jest does not include ResizeObserver.
 class ResizeObserverMock {
-  private _callback: ResizeObserverCallback;
+  #callback: ResizeObserverCallback;
 
   public constructor(callback: ResizeObserverCallback) {
-    this._callback = callback;
+    this.#callback = callback;
   }
 
   public disconnect() {}
@@ -55,7 +52,7 @@ class ResizeObserverMock {
     const entry = {
       contentRect: { width: 150, height: 150 },
     };
-    this._callback([entry as ResizeObserverEntry], this);
+    this.#callback([entry as ResizeObserverEntry], this);
   }
 
   public unobserve() {}

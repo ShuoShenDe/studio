@@ -11,13 +11,12 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { cloneDeep } from "lodash";
-
+import { unwrap } from "@foxglove/den/monads";
 import { RosDatatypes } from "@foxglove/studio-base/types/RosDatatypes";
 
 import {
   traverseStructure,
-  messagePathsForDatatype,
+  messagePathsForStructure,
   messagePathStructures,
   validTerminatingStructureItem,
 } from "./messagePathsForDatatype";
@@ -46,10 +45,7 @@ const datatypes: RosDatatypes = new Map(
       ],
     },
     "msgs/Log": {
-      definitions: [
-        { name: "id", type: "int32", isArray: false },
-        { name: "myJson", type: "json", isArray: false },
-      ],
+      definitions: [{ name: "id", type: "int32", isArray: false }],
     },
     "geometry_msgs/Transform": {
       definitions: [
@@ -295,7 +291,6 @@ describe("messagePathStructures", () => {
       "msgs/Log": {
         nextByName: {
           id: { primitiveType: "int32", structureType: "primitive", datatype: "msgs/Log" },
-          myJson: { structureType: "primitive", primitiveType: "json", datatype: "msgs/Log" },
         },
         structureType: "message",
         datatype: "msgs/Log",
@@ -404,11 +399,6 @@ describe("messagePathStructures", () => {
     });
   });
 
-  it("caches when passing in the same datatypes", () => {
-    expect(messagePathStructures(datatypes)).toBe(messagePathStructures(datatypes));
-    expect(messagePathStructures(cloneDeep(datatypes))).not.toBe(messagePathStructures(datatypes));
-  });
-
   it("supports types which reference themselves", () => {
     const selfReferencingDatatypes: RosDatatypes = new Map(
       Object.entries({
@@ -434,9 +424,11 @@ describe("messagePathStructures", () => {
   });
 });
 
-describe("messagePathsForDatatype", () => {
+describe("messagePathsForStructure", () => {
+  const structures = messagePathStructures(datatypes);
+
   it("returns all possible message paths when not passing in `validTypes`", () => {
-    expect(messagePathsForDatatype("pose_msgs/PoseDebug", datatypes)).toEqual([
+    expect(messagePathsForStructure(unwrap(structures["pose_msgs/PoseDebug"]))).toEqual([
       "",
       ".header",
       ".header.frame_id",
@@ -455,9 +447,9 @@ describe("messagePathsForDatatype", () => {
       ".some_pose.header.stamp.sec",
       ".some_pose.x",
     ]);
-    expect(messagePathsForDatatype("msgs/Log", datatypes)).toEqual(["", ".id", ".myJson"]);
+    expect(messagePathsForStructure(unwrap(structures["msgs/Log"]))).toEqual(["", ".id"]);
 
-    expect(messagePathsForDatatype("tf/tfMessage", datatypes)).toEqual([
+    expect(messagePathsForStructure(unwrap(structures["tf/tfMessage"]))).toEqual([
       "",
       ".transforms",
       ".transforms[0]",
@@ -473,7 +465,7 @@ describe("messagePathsForDatatype", () => {
       ".transforms[0].transform.translation",
     ]);
 
-    expect(messagePathsForDatatype("visualization_msgs/MarkerArray", datatypes)).toEqual([
+    expect(messagePathsForStructure(unwrap(structures["visualization_msgs/MarkerArray"]))).toEqual([
       "",
       ".markers",
       ".markers[:]{id==0}",
@@ -483,13 +475,15 @@ describe("messagePathsForDatatype", () => {
 
   it("returns an array of possible message paths for the given `validTypes`", () => {
     expect(
-      messagePathsForDatatype("pose_msgs/PoseDebug", datatypes, { validTypes: ["float64"] }),
+      messagePathsForStructure(unwrap(structures["pose_msgs/PoseDebug"]), {
+        validTypes: ["float64"],
+      }),
     ).toEqual([".some_pose.dummy_array[:]", ".some_pose.x"]);
   });
 
   it("does not suggest hashes with multiple values when setting `noMultiSlices`", () => {
     expect(
-      messagePathsForDatatype("pose_msgs/PoseDebug", datatypes, {
+      messagePathsForStructure(unwrap(structures["pose_msgs/PoseDebug"]), {
         validTypes: ["float64"],
         noMultiSlices: true,
       }),
@@ -549,7 +543,6 @@ describe("validTerminatingStructureItem", () => {
 describe("traverseStructure", () => {
   it("returns whether the path is valid for the structure, plus some metadata", () => {
     const structure = messagePathStructures(datatypes)["pose_msgs/PoseDebug"];
-    const structureJson = messagePathStructures(datatypes)["msgs/Log"];
 
     // Valid:
     expect(
@@ -601,46 +594,6 @@ describe("traverseStructure", () => {
       valid: true,
       msgPathPart: undefined,
       structureItem: structure?.nextByName.some_pose,
-    });
-    expect(
-      traverseStructure(structureJson, [{ type: "name", name: "myJson", repr: "myJson" }]),
-    ).toEqual({
-      msgPathPart: undefined,
-      structureItem: { structureType: "primitive", primitiveType: "json", datatype: "msgs/Log" },
-      valid: true,
-    });
-
-    expect(
-      traverseStructure(structureJson, [
-        { type: "name", name: "myJson", repr: "myJson" },
-        { type: "name", name: "fieldInsideMyJson", repr: "fieldInsideMyJson" },
-      ]),
-    ).toEqual({
-      msgPathPart: undefined,
-      structureItem: { datatype: "msgs/Log", structureType: "primitive", primitiveType: "json" },
-      valid: true,
-    });
-
-    expect(
-      traverseStructure(structureJson, [
-        { type: "name", name: "myJson", repr: "myJson" },
-        { type: "filter", path: ["y"], value: 10, nameLoc: 123, valueLoc: 0, repr: "" },
-      ]),
-    ).toEqual({
-      msgPathPart: undefined,
-      structureItem: { datatype: "msgs/Log", structureType: "primitive", primitiveType: "json" },
-      valid: true,
-    });
-
-    expect(
-      traverseStructure(structureJson, [
-        { type: "name", name: "myJson", repr: "myJson" },
-        { type: "slice", start: 50, end: 100 },
-      ]),
-    ).toEqual({
-      msgPathPart: undefined,
-      structureItem: { datatype: "msgs/Log", structureType: "primitive", primitiveType: "json" },
-      valid: true,
     });
 
     expect(

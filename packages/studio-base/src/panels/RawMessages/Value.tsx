@@ -10,7 +10,7 @@ import StateTransitionsIcon from "@mui/icons-material/PowerInput";
 import ScatterPlotIcon from "@mui/icons-material/ScatterPlot";
 import LineChartIcon from "@mui/icons-material/ShowChart";
 import { IconButtonProps, Tooltip, TooltipProps } from "@mui/material";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { withStyles, makeStyles } from "tss-react/mui";
 
 import HoverableIconButton from "@foxglove/studio-base/components/HoverableIconButton";
@@ -31,10 +31,8 @@ const StyledIconButton = withStyles(HoverableIconButton, (theme) => ({
   root: {
     "&.MuiIconButton-root": {
       fontSize: theme.typography.pxToRem(16),
+      opacity: 0.6,
       padding: 0,
-
-      "&:hover": { backgroundColor: "transparent" },
-      "&:not(:hover)": { opacity: 0.6 },
     },
   },
 }));
@@ -76,7 +74,8 @@ const emptyAction: ValueActionItem = {
 
 const MAX_ACTION_ITEMS = 4;
 
-export default function Value(props: ValueProps): JSX.Element {
+function Value(props: ValueProps): JSX.Element {
+  const timeOutID = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const {
     arrLabel,
     basePath,
@@ -89,30 +88,35 @@ export default function Value(props: ValueProps): JSX.Element {
   const [copied, setCopied] = useState(false);
 
   const openPlotPanel = useCallback(
-    (pathSuffix: string) => () =>
-      openSiblingPlotPanel(openSiblingPanel, `${basePath}${pathSuffix}`),
+    (pathSuffix: string) => () => {
+      openSiblingPlotPanel(openSiblingPanel, `${basePath}${pathSuffix}`);
+    },
     [basePath, openSiblingPanel],
   );
 
   const openStateTransitionsPanel = useCallback(
-    (pathSuffix: string) => () =>
-      openSiblingStateTransitionsPanel(openSiblingPanel, `${basePath}${pathSuffix}`),
+    (pathSuffix: string) => () => {
+      openSiblingStateTransitionsPanel(openSiblingPanel, `${basePath}${pathSuffix}`);
+    },
     [basePath, openSiblingPanel],
   );
 
-  const onFilter = useCallback(
-    () => onTopicPathChange(`${basePath}${valueAction?.filterPath}`),
-    [basePath, valueAction, onTopicPathChange],
-  );
+  const onFilter = useCallback(() => {
+    onTopicPathChange(`${basePath}${valueAction?.filterPath}`);
+  }, [basePath, valueAction, onTopicPathChange]);
 
   const handleCopy = useCallback((value: string) => {
     clipboard
       .copy(value)
       .then(() => {
         setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        timeOutID.current = setTimeout(() => {
+          setCopied(false);
+        }, 1500);
       })
-      .catch((e) => console.warn(e));
+      .catch((e) => {
+        console.warn(e);
+      });
   }, []);
 
   const availableActions = useMemo(() => {
@@ -123,7 +127,9 @@ export default function Value(props: ValueProps): JSX.Element {
         activeColor: copied ? "success" : "primary",
         tooltip: copied ? "Copied" : "Copy to Clipboard",
         icon: copied ? <CheckIcon fontSize="inherit" /> : <CopyAllIcon fontSize="inherit" />,
-        onClick: () => handleCopy(JSON.stringify(itemValue, copyMessageReplacer, 2) ?? ""),
+        onClick: () => {
+          handleCopy(JSON.stringify(itemValue, copyMessageReplacer, 2) ?? "");
+        },
       });
     }
     if (valueAction != undefined) {
@@ -187,28 +193,59 @@ export default function Value(props: ValueProps): JSX.Element {
   }, [availableActions.length]);
   const { classes, cx } = useStyles();
 
+  useEffect(() => {
+    return () => {
+      if (timeOutID.current != undefined) {
+        clearTimeout(timeOutID.current);
+      }
+    };
+  }, []);
+
+  // The Tooltip and StyledIconButton components seem to be expensive to render so we
+  // track our hover state and render them conditionally only when this component is
+  // hovered.
+  const [pointerOver, setPointerOver] = useState(false);
+
   return (
-    <Stack inline flexWrap="wrap" direction="row" alignItems="center" gap={0.25}>
+    <Stack
+      inline
+      flexWrap="wrap"
+      direction="row"
+      alignItems="center"
+      gap={0.25}
+      onPointerEnter={() => {
+        setPointerOver(true);
+      }}
+      onPointerLeave={() => {
+        setPointerOver(false);
+      }}
+    >
       <HighlightedValue itemLabel={itemLabel} />
       {arrLabel}
-      {availableActions.map((action) => (
-        <Tooltip key={action.key} arrow title={action.tooltip} placement="top">
-          <StyledIconButton
-            size="small"
-            activeColor={action.activeColor}
-            onClick={action.onClick}
-            color="inherit"
-            icon={action.icon}
-          />
-        </Tooltip>
-      ))}
-      <span className={cx(classes.placeholderActionContainer)}>
-        {placeholderActionsForSpacing.map((action) => (
+      {pointerOver &&
+        availableActions.map((action) => (
           <Tooltip key={action.key} arrow title={action.tooltip} placement="top">
-            <StyledIconButton size="small" color="inherit" icon={action.icon} />
+            <StyledIconButton
+              size="small"
+              activeColor={action.activeColor}
+              onClick={action.onClick}
+              color="inherit"
+              icon={action.icon}
+            />
           </Tooltip>
         ))}
+      <span className={cx(classes.placeholderActionContainer)}>
+        {pointerOver &&
+          placeholderActionsForSpacing.map((action) => (
+            <Tooltip key={action.key} arrow title={action.tooltip} placement="top">
+              <StyledIconButton size="small" color="inherit" icon={action.icon} />
+            </Tooltip>
+          ))}
       </span>
     </Stack>
   );
 }
+
+// In practice this seems to be an expensive component to render.
+// Memoization provides a very noticeable performance boost.
+export default React.memo(Value);

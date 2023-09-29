@@ -2,7 +2,6 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import CircularDependencyPlugin from "circular-dependency-plugin";
 import { ESBuildMinifyPlugin } from "esbuild-loader";
 import ForkTsCheckerWebpackPlugin from "fork-ts-checker-webpack-plugin";
 import monacoPkg from "monaco-editor/package.json";
@@ -10,14 +9,13 @@ import MonacoWebpackPlugin from "monaco-editor-webpack-plugin";
 import path from "path";
 import ReactRefreshTypescript from "react-refresh-typescript";
 import ts from "typescript";
-import webpack, { Configuration, WebpackPluginInstance } from "webpack";
+import webpack, { Configuration } from "webpack";
 
 import { createTssReactNameTransformer } from "@foxglove/typescript-transformers";
 
 import { WebpackArgv } from "./WebpackArgv";
-import packageJson from "./package.json";
 
-if (monacoPkg.version !== "0.30.1") {
+if (monacoPkg.version !== "0.40.0") {
   throw new Error(`
     It looks like you are trying to change the version of Monaco.
 
@@ -37,6 +35,10 @@ type Options = {
   // We ignore errors from unused locals to avoid having to also comment
   // those out while iterating.
   allowUnusedVariables?: boolean;
+  /** Specify the app version. */
+  version: string;
+  /** Specify the path to the tsconfig.json file for ForkTsCheckerWebpackPlugin. If unset, the plugin defaults to finding the config file in the webpack `context` directory. */
+  tsconfigPath?: string;
 };
 
 // Create a partial webpack configuration required to build app using webpack.
@@ -44,14 +46,12 @@ type Options = {
 export function makeConfig(
   _: unknown,
   argv: WebpackArgv,
-  options?: Options,
+  options: Options,
 ): Pick<Configuration, "resolve" | "module" | "optimization" | "plugins" | "node"> {
   const isDev = argv.mode === "development";
   const isServe = argv.env?.WEBPACK_SERVE ?? false;
 
-  const commitHash = process.env.GITHUB_SHA ?? process.env.VERCEL_GIT_COMMIT_SHA;
-
-  const { allowUnusedVariables = isDev && isServe } = options ?? {};
+  const { allowUnusedVariables = isDev && isServe, version, tsconfigPath } = options;
 
   return {
     resolve: {
@@ -84,6 +84,10 @@ export function makeConfig(
         // punycode is a dependency for some older webpack v4 browser libs
         // It adds unecessary bloat to the build so we make sure it isn't included
         punycode: false,
+
+        // Workaround for https://github.com/react-dnd/react-dnd/issues/3423
+        "react/jsx-runtime": "react/jsx-runtime.js",
+        "react/jsx-dev-runtime": "react/jsx-dev-runtime.js",
       },
     },
     module: {
@@ -138,7 +142,7 @@ export function makeConfig(
         { test: /\.(md|template)$/, type: "asset/source" },
         {
           test: /\.svg$/,
-          loader: "react-svg-loader", // foxglove-depcheck-used: react-svg-loader
+          loader: "@svgr/webpack", // foxglove-depcheck-used: @svgr/webpack
           options: {
             svgo: {
               plugins: [{ removeViewBox: false }, { removeDimensions: false }],
@@ -177,12 +181,12 @@ export function makeConfig(
           // bundle it for the renderer.
           // https://github.com/microsoft/TypeScript/issues/39436
           // Prettier's TS parser also bundles the same code: https://github.com/prettier/prettier/issues/11076
-          test: /[\\/]node_modules[\\/]typescript[\\/]lib[\\/]typescript\.js$|[\\/]node_modules[\\/]prettier[\\/]parser-typescript\.js$/,
+          test: /[\\/]node_modules[\\/]typescript[\\/]lib[\\/]typescript\.js$|[\\/]node_modules[\\/]prettier[\\/]plugins[\\/]typescript\.m?js$/,
           loader: "string-replace-loader", // foxglove-depcheck-used: string-replace-loader
           options: {
             multiple: [
               {
-                search: "etwModule = require(etwModulePath);",
+                search: /etwModule\s*=\s*require\(etwModulePath\);/,
                 replace:
                   "throw new Error('[Foxglove] This module is not supported in the browser.');",
               },
@@ -202,6 +206,10 @@ export function makeConfig(
                   "throw new Error('[Foxglove] This module is not supported in the browser.');",
               },
               {
+                search: `return { module:   require(modulePath), modulePath, error: void 0 };`,
+                replace: `throw new Error('[Foxglove] This module is not supported in the browser.');`,
+              },
+              {
                 search: `getModuleResolver=function(e){let t;try{t=require(e)}`,
                 replace:
                   "getModuleResolver=function(e){let t;try{throw new Error('[Foxglove] This module is not supported in the browser.')}",
@@ -213,20 +221,15 @@ export function makeConfig(
     },
     optimization: {
       removeAvailableModules: true,
+
       minimizer: [
         new ESBuildMinifyPlugin({
-          target: "es2020",
-          minifyIdentifiers: false, // readable error stack traces are helpful for debugging
-          minifySyntax: true,
-          minifyWhitespace: true,
+          target: "es2022",
+          minify: true,
         }),
       ],
     },
     plugins: [
-      new CircularDependencyPlugin({
-        exclude: /node_modules/,
-        failOnError: true,
-      }) as WebpackPluginInstance,
       new webpack.ProvidePlugin({
         // since we avoid "import React from 'react'" we shim here when used globally
         React: "react",
@@ -238,10 +241,7 @@ export function makeConfig(
       new webpack.DefinePlugin({
         // Should match webpack-defines.d.ts
         ReactNull: null, // eslint-disable-line no-restricted-syntax
-        FOXGLOVE_STUDIO_VERSION: JSON.stringify(packageJson.version),
-        FOXGLOVE_USER_AGENT: JSON.stringify(
-          `studio/${packageJson.version} (commit ${commitHash ?? "??"})`,
-        ),
+        FOXGLOVE_STUDIO_VERSION: JSON.stringify(version),
       }),
       // https://webpack.js.org/plugins/ignore-plugin/#example-of-ignoring-moment-locales
       new webpack.IgnorePlugin({
@@ -258,9 +258,7 @@ export function makeConfig(
       }),
       new ForkTsCheckerWebpackPlugin({
         typescript: {
-          // Note: configFile should not be overridden, it needs to differ between web, desktop,
-          // etc. so that files specific to each build (not just shared files) are also
-          // type-checked. The default behavior is to find it from the webpack `context` directory.
+          configFile: tsconfigPath,
           configOverwrite: {
             compilerOptions: {
               noUnusedLocals: !allowUnusedVariables,

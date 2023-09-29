@@ -2,13 +2,15 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import { StoryObj } from "@storybook/react";
+
 import { MessageEvent } from "@foxglove/studio";
 import { Topic } from "@foxglove/studio-base/players/types";
 import PanelSetup from "@foxglove/studio-base/stories/PanelSetup";
 
 import { makeColor, STL_CUBE_MESH_RESOURCE } from "./common";
 import useDelayedFixture from "./useDelayedFixture";
-import ThreeDeeRender from "../index";
+import ThreeDeePanel from "../index";
 
 const RED = makeColorAttribute("#f44336");
 const GREEN = makeColorAttribute("#4caf50");
@@ -95,65 +97,153 @@ const URDF2 = `<?xml version="1.0"?>
   </joint>
 </robot>`;
 
+const URDF3 = `<?xml version="1.0"?>
+<robot name="URDF Test3">
+  <material name="base-sphere-material"><color rgba="${BLUE}"/></material>
+  <material name="sphere-material"><color rgba="${RED}"/></material>
+  <link name="base_link">
+    <visual>
+      <geometry><sphere radius="0.2"/></geometry>
+      <material name="base-sphere-material"/>
+    </visual>
+  </link>
+  <joint name="base_sphere_box_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="sphere_link"/>
+    <origin rpy="0 0 0" xyz="0 0 0.3"/>
+  </joint>
+  <link name="sphere_link">
+    <visual>
+      <geometry><sphere radius="0.1"/></geometry>
+      <material name="sphere-material"/>
+    </visual>
+  </link>
+</robot>`;
+
 export default {
   title: "panels/ThreeDeeRender",
-  component: ThreeDeeRender,
+  component: ThreeDeePanel,
 };
 
-Urdfs.parameters = { colorScheme: "dark" };
-export function Urdfs(): JSX.Element {
-  const topics: Topic[] = [{ name: "/robot_description", schemaName: "std_msgs/String" }];
-  const robot_description: MessageEvent<{ data: string }> = {
-    topic: "/robot_description",
-    receiveTime: { sec: 10, nsec: 0 },
-    message: {
-      data: URDF,
-    },
-    schemaName: "std_msgs/String",
-    sizeInBytes: 0,
-  };
+export const Urdfs: StoryObj = {
+  render: function Story() {
+    const topics: Topic[] = [
+      { name: "/robot_description", schemaName: "std_msgs/String" },
+      { name: "/tf_static", schemaName: "tf2_msgs/TFMessage" },
+      { name: "/some/robot_description", schemaName: "std_msgs/String" },
+    ];
+    const robot_description: MessageEvent<{ data: string }> = {
+      topic: "/robot_description",
+      receiveTime: { sec: 10, nsec: 0 },
+      message: {
+        data: URDF,
+      },
+      schemaName: "std_msgs/String",
+      sizeInBytes: 0,
+    };
+    const mesh_T_robot_1 = {
+      header: {
+        frame_id: "mesh-no-material",
+      },
+      child_frame_id: "robot_1/base_link",
+      transform: {
+        translation: {
+          x: 0,
+          y: -3,
+          z: 0,
+        },
+        rotation: {
+          w: 1,
+        },
+      },
+    };
+    const mesh_T_robot_2 = {
+      ...mesh_T_robot_1,
+      child_frame_id: "robot_2/base_link",
+      transform: { ...mesh_T_robot_1.transform, translation: { x: 1, y: -1 } },
+    };
 
-  const fixture = useDelayedFixture({
-    topics,
-    frame: {
-      "/robot_description": [robot_description],
-    },
-    capabilities: [],
-    activeData: {
-      currentTime: undefined,
-    },
-  });
+    const urdfParamName = "/some_ns/robot_description";
+    const fixture = useDelayedFixture({
+      topics,
+      frame: {
+        "/robot_description": [robot_description],
+      },
+      capabilities: [],
+      activeData: {
+        currentTime: { sec: 0, nsec: 0 },
+        parameters: new Map([[urdfParamName, URDF3]]),
+        messages: [
+          // Add transforms for the URDF instances that use a `framePrefix`, as these use the
+          // same URDF and would otherwise displayed on top of each other.
+          {
+            topic: "/tf_static",
+            schemaName: "tf2_msgs/TFMessage",
+            receiveTime: { sec: 0, nsec: 0 },
+            sizeInBytes: 0,
+            message: {
+              transforms: [mesh_T_robot_1, mesh_T_robot_2],
+            },
+          },
+          {
+            topic: "/some/robot_description",
+            schemaName: "std_msgs/String",
+            receiveTime: { sec: 0, nsec: 0 },
+            sizeInBytes: 0,
+            message: {
+              data: URDF3,
+            },
+          },
+        ],
+      },
+    });
 
-  return (
-    <PanelSetup fixture={fixture}>
-      <ThreeDeeRender
-        overrideConfig={{
-          scene: {
-            transforms: {
-              axisScale: 3,
+    return (
+      <PanelSetup fixture={fixture}>
+        <ThreeDeePanel
+          overrideConfig={{
+            scene: {
+              transforms: {
+                axisScale: 3,
+              },
             },
-          },
-          layers: {
-            grid: {
-              layerId: "foxglove.Grid",
-              position: [0, 0, 0],
+            layers: {
+              grid: {
+                layerId: "foxglove.Grid",
+                position: [0, 0, 0],
+              },
+              urdfFromUrl: {
+                layerId: "foxglove.Urdf",
+                sourceType: "url",
+                url: encodeURI(`data:text/xml;utf8,${URDF2}`),
+              },
+              urdfFromParameter: {
+                layerId: "foxglove.Urdf",
+                sourceType: "param",
+                parameter: urdfParamName,
+                framePrefix: `robot_1/`,
+              },
+              urdfFromTopic: {
+                layerId: "foxglove.Urdf",
+                sourceType: "topic",
+                topic: "/some/robot_description",
+                framePrefix: `robot_2/`,
+              },
             },
-            urdf: {
-              layerId: "foxglove.Urdf",
-              url: encodeURI(`data:text/xml;utf8,${URDF2}`),
+            cameraState: {
+              distance: 6,
             },
-          },
-          cameraState: {
-            distance: 6,
-          },
-          topics: {
-            "/robot_description": { visible: true },
-          },
-        }}
-      />
-    </PanelSetup>
-  );
-}
+            topics: {
+              "/robot_description": { visible: true },
+            },
+          }}
+        />
+      </PanelSetup>
+    );
+  },
+
+  parameters: { colorScheme: "dark" },
+};
 
 function makeColorAttribute(hex: string, alpha = 1): string {
   const c = makeColor(hex, alpha);

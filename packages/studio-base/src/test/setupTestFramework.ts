@@ -12,9 +12,11 @@
 //   You may not use this file except in compliance with the License.
 
 import { diff } from "jest-diff";
-import { isEqual } from "lodash";
+import * as _ from "lodash-es";
 
+import { initI18n } from "@foxglove/studio-base/i18n";
 import {
+  setupMockSendNotification,
   mockSendNotification,
   mockSetNotificationHandler,
 } from "@foxglove/studio-base/test/MockSendNotification";
@@ -27,6 +29,9 @@ jest.mock("@foxglove/studio-base/util/sendNotification", () => {
     setNotificationHandler: mockSetNotificationHandler,
   };
 });
+beforeEach(() => {
+  setupMockSendNotification();
+});
 
 // intercept console.error and console.warn calls to fail tests if they are called
 // the user can indicate they expect the call to happen by checking the mock.calls
@@ -37,6 +42,10 @@ const origError = console.error;
 const origWarn = console.warn;
 const consoleErrorMock = (console.error = jest.fn());
 const consoleWarnMock = (console.warn = jest.fn());
+
+beforeAll(async () => {
+  await initI18n();
+});
 
 beforeEach(() => {
   consoleErrorMock.mockClear();
@@ -123,13 +132,13 @@ expect.extend({
       pass = false;
     } else {
       for (const expectedItem of expectedArray) {
-        if (!receivedArray.some((receivedItem) => isEqual(receivedItem, expectedItem))) {
+        if (!receivedArray.some((receivedItem) => _.isEqual(receivedItem, expectedItem))) {
           pass = false;
           break;
         }
       }
       for (const receivedItem of receivedArray) {
-        if (!expectedArray.some((expectedItem) => isEqual(receivedItem, expectedItem))) {
+        if (!expectedArray.some((expectedItem) => _.isEqual(receivedItem, expectedItem))) {
           pass = false;
           break;
         }

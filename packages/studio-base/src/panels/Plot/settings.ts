@@ -2,14 +2,14 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import produce from "immer";
-import { isEqual, isNumber, set } from "lodash";
+import { TFunction } from "i18next";
+import { produce } from "immer";
+import * as _ from "lodash-es";
 import memoizeWeak from "memoize-weak";
 import { useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 import { SettingsTreeAction, SettingsTreeNode, SettingsTreeNodes } from "@foxglove/studio";
-import { AppSetting } from "@foxglove/studio-base/AppSetting";
-import { useAppConfigurationValue } from "@foxglove/studio-base/hooks";
 import { PlotPath } from "@foxglove/studio-base/panels/Plot/internalTypes";
 import { usePanelSettingsTreeUpdate } from "@foxglove/studio-base/providers/PanelStateContextProvider";
 import { SaveConfig } from "@foxglove/studio-base/types/panels";
@@ -17,129 +17,138 @@ import { lineColors } from "@foxglove/studio-base/util/plotColors";
 
 import { plotableRosTypes, PlotConfig, plotPathDisplayName } from "./types";
 
-const makeSeriesNode = memoizeWeak((path: PlotPath, index: number): SettingsTreeNode => {
-  return {
-    actions: [
-      {
-        type: "action",
-        id: "delete-series",
-        label: "Delete series",
-        display: "inline",
-        icon: "Clear",
+const makeSeriesNode = memoizeWeak(
+  (path: PlotPath, index: number, t: TFunction<"plot">): SettingsTreeNode => {
+    return {
+      actions: [
+        {
+          type: "action",
+          id: "delete-series",
+          label: t("deleteSeries"),
+          display: "inline",
+          icon: "Clear",
+        },
+      ],
+      label: plotPathDisplayName(path, index),
+      visible: path.enabled,
+      fields: {
+        value: {
+          label: t("messagePath"),
+          input: "messagepath",
+          value: path.value,
+          validTypes: plotableRosTypes,
+          supportsMathModifiers: true,
+        },
+        label: {
+          input: "string",
+          label: t("label"),
+          value: path.label,
+        },
+        color: {
+          input: "rgb",
+          label: t("color"),
+          value: path.color ?? lineColors[index % lineColors.length],
+        },
+        showLine: {
+          label: t("showLine"),
+          input: "boolean",
+          value: path.showLine !== false,
+        },
+        timestampMethod: {
+          input: "select",
+          label: t("timestamp"),
+          value: path.timestampMethod,
+          options: [
+            { label: t("receiveTime"), value: "receiveTime" },
+            { label: t("headerStamp"), value: "headerStamp" },
+          ],
+        },
       },
-    ],
-    label: plotPathDisplayName(path, index),
-    visible: path.enabled,
-    fields: {
-      label: {
-        input: "string",
-        label: "Label",
-        value: path.label,
-      },
-      value: {
-        label: "Message path",
-        input: "messagepath",
-        value: path.value,
-        validTypes: plotableRosTypes,
-      },
-      color: {
-        input: "rgb",
-        label: "Color",
-        value: path.color ?? lineColors[index % lineColors.length],
-      },
-      timestampMethod: {
-        input: "select",
-        label: "Timestamp",
-        value: path.timestampMethod,
-        options: [
-          { label: "Receive Time", value: "receiveTime" },
-          { label: "Header Stamp", value: "headerStamp" },
-        ],
-      },
-    },
-  };
-});
+    };
+  },
+);
 
-const makeRootSeriesNode = memoizeWeak((paths: PlotPath[]): SettingsTreeNode => {
-  const children = Object.fromEntries(
-    paths.map((path, index) => [`${index}`, makeSeriesNode(path, index)]),
-  );
-  return {
-    label: "Series",
-    children,
-    actions: [
-      {
-        type: "action",
-        id: "add-series",
-        label: "Add series",
-        display: "inline",
-        icon: "Addchart",
-      },
-    ],
-  };
-});
+const makeRootSeriesNode = memoizeWeak(
+  (paths: PlotPath[], t: TFunction<"plot">): SettingsTreeNode => {
+    const children = Object.fromEntries(
+      paths.map((path, index) => [`${index}`, makeSeriesNode(path, index, t)]),
+    );
+    return {
+      label: t("series"),
+      children,
+      actions: [
+        {
+          type: "action",
+          id: "add-series",
+          label: t("addSeries"),
+          display: "inline",
+          icon: "Addchart",
+        },
+      ],
+    };
+  },
+);
 
-// eslint-disable-next-line @foxglove/no-boolean-parameters
-function buildSettingsTree(config: PlotConfig, enableSeries: boolean): SettingsTreeNodes {
+function buildSettingsTree(config: PlotConfig, t: TFunction<"plot">): SettingsTreeNodes {
   const maxYError =
-    isNumber(config.minYValue) && isNumber(config.maxYValue) && config.minYValue >= config.maxYValue
-      ? "Y max must be greater than Y min."
+    _.isNumber(config.minYValue) &&
+    _.isNumber(config.maxYValue) &&
+    config.minYValue >= config.maxYValue
+      ? t("maxYError")
       : undefined;
 
   const maxXError =
-    isNumber(config.minXValue) && isNumber(config.maxXValue) && config.minXValue >= config.maxXValue
-      ? "X max must be greater than X min."
+    _.isNumber(config.minXValue) &&
+    _.isNumber(config.maxXValue) &&
+    config.minXValue >= config.maxXValue
+      ? t("maxXError")
       : undefined;
 
   return {
     general: {
-      label: "General",
+      label: t("general"),
       fields: {
-        isSynced: { label: "Sync with other plots", input: "boolean", value: config.isSynced },
+        isSynced: { label: t("syncWithOtherPlots"), input: "boolean", value: config.isSynced },
       },
     },
     legend: {
-      label: "Legend",
+      label: t("legend"),
       fields: {
         legendDisplay: {
-          label: "Position",
+          label: t("position"),
           input: "select",
           value: config.legendDisplay,
           options: [
-            { value: "floating", label: "Floating" },
-            { value: "left", label: "Left" },
-            { value: "top", label: "Top" },
+            { value: "floating", label: t("floating") },
+            { value: "left", label: t("left") },
+            { value: "top", label: t("top") },
+            { value: "none", label: t("hidden") },
           ],
         },
-        showLegend: {
-          label: "Show legend",
-          input: "boolean",
-          value: config.showLegend,
-        },
         showPlotValuesInLegend: {
-          label: "Show values",
+          label: t("showValues"),
           input: "boolean",
           value: config.showPlotValuesInLegend,
         },
       },
     },
     yAxis: {
-      label: "Y Axis",
+      label: t("yAxis"),
       defaultExpansionState: "collapsed",
       fields: {
         showYAxisLabels: {
-          label: "Show labels",
+          label: t("showLabels"),
           input: "boolean",
           value: config.showYAxisLabels,
         },
         minYValue: {
-          label: "Min",
+          label: t("min"),
           input: "number",
           value: config.minYValue != undefined ? Number(config.minYValue) : undefined,
           placeholder: "auto",
         },
         maxYValue: {
-          label: "Max",
+          label: t("max"),
           input: "number",
           error: maxYError,
           value: config.maxYValue != undefined ? Number(config.maxYValue) : undefined,
@@ -148,64 +157,66 @@ function buildSettingsTree(config: PlotConfig, enableSeries: boolean): SettingsT
       },
     },
     xAxis: {
-      label: "X Axis",
+      label: t("xAxis"),
       defaultExpansionState: "collapsed",
       fields: {
         xAxisVal: {
-          label: "Value",
+          label: t("value"),
           input: "select",
           value: config.xAxisVal,
           options: [
-            { label: "Timestamp", value: "timestamp" },
-            { label: "Index", value: "index" },
-            { label: "Path (current)", value: "currentCustom" },
-            { label: "Path (accumulated)", value: "custom" },
+            { label: t("timestamp"), value: "timestamp" },
+            { label: t("index"), value: "index" },
+            { label: t("currentPath"), value: "currentCustom" },
+            { label: t("accumulatedPath"), value: "custom" },
           ],
         },
         xAxisPath:
           config.xAxisVal === "currentCustom" || config.xAxisVal === "custom"
             ? {
-                label: "Message path",
+                label: t("messagePath"),
                 input: "messagepath",
                 value: config.xAxisPath?.value ?? "",
                 validTypes: plotableRosTypes,
               }
             : undefined,
         showXAxisLabels: {
-          label: "Show labels",
+          label: t("showLabels"),
           input: "boolean",
           value: config.showXAxisLabels,
         },
         minXValue: {
-          label: "Min",
+          label: t("min"),
           input: "number",
           value: config.minXValue != undefined ? Number(config.minXValue) : undefined,
           placeholder: "auto",
         },
         maxXValue: {
-          label: "Max",
+          label: t("max"),
           input: "number",
           error: maxXError,
           value: config.maxXValue != undefined ? Number(config.maxXValue) : undefined,
           placeholder: "auto",
         },
         followingViewWidth: {
-          label: "Range (seconds)",
+          label: t("secondsRange"),
           input: "number",
           placeholder: "auto",
           value: config.followingViewWidth,
         },
       },
     },
-    paths: enableSeries ? makeRootSeriesNode(config.paths) : undefined,
+    paths: makeRootSeriesNode(config.paths, t),
   };
 }
 
-export function usePlotPanelSettings(config: PlotConfig, saveConfig: SaveConfig<PlotConfig>): void {
+export function usePlotPanelSettings(
+  config: PlotConfig,
+  saveConfig: SaveConfig<PlotConfig>,
+  focusedPath?: readonly string[],
+): void {
   const updatePanelSettingsTree = usePanelSettingsTreeUpdate();
-  const [enableSeries = false] = useAppConfigurationValue<boolean>(
-    AppSetting.ENABLE_PLOT_PANEL_SERIES_SETTINGS,
-  );
+  const { t } = useTranslation("plot");
 
   const actionHandler = useCallback(
     (action: SettingsTreeAction) => {
@@ -215,14 +226,17 @@ export function usePlotPanelSettings(config: PlotConfig, saveConfig: SaveConfig<
           produce((draft) => {
             if (path[0] === "paths") {
               if (path[2] === "visible") {
-                set(draft, [...path.slice(0, 2), "enabled"], value);
+                _.set(draft, [...path.slice(0, 2), "enabled"], value);
               } else {
-                set(draft, path, value);
+                _.set(draft, path, value);
               }
-            } else if (isEqual(path, ["xAxis", "xAxisPath"])) {
-              set(draft, ["xAxisPath", "value"], value);
+            } else if (_.isEqual(path, ["legend", "legendDisplay"])) {
+              draft.legendDisplay = value;
+              draft.showLegend = true;
+            } else if (_.isEqual(path, ["xAxis", "xAxisPath"])) {
+              _.set(draft, ["xAxisPath", "value"], value);
             } else {
-              set(draft, path.slice(1), value);
+              _.set(draft, path.slice(1), value);
 
               // X min/max and following width are mutually exclusive.
               if (path[1] === "followingViewWidth") {
@@ -241,7 +255,6 @@ export function usePlotPanelSettings(config: PlotConfig, saveConfig: SaveConfig<
               draft.paths.push({
                 timestampMethod: "receiveTime",
                 value: "",
-                label: `Series ${draft.paths.length + 1}`,
                 enabled: true,
               });
             }),
@@ -262,7 +275,8 @@ export function usePlotPanelSettings(config: PlotConfig, saveConfig: SaveConfig<
   useEffect(() => {
     updatePanelSettingsTree({
       actionHandler,
-      nodes: buildSettingsTree(config, enableSeries),
+      focusedPath,
+      nodes: buildSettingsTree(config, t),
     });
-  }, [actionHandler, config, enableSeries, updatePanelSettingsTree]);
+  }, [actionHandler, config, focusedPath, updatePanelSettingsTree, t]);
 }

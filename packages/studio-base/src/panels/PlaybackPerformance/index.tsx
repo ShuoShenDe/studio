@@ -12,10 +12,11 @@
 //   You may not use this file except in compliance with the License.
 
 import { Typography } from "@mui/material";
-import { last, sumBy } from "lodash";
+import * as _ from "lodash-es";
 import { ReactElement } from "react";
 
 import { subtract as subtractTimes, toSec } from "@foxglove/rostime";
+import { Immutable } from "@foxglove/studio";
 import { useMessagePipeline } from "@foxglove/studio-base/components/MessagePipeline";
 import Panel from "@foxglove/studio-base/components/Panel";
 import PanelToolbar from "@foxglove/studio-base/components/PanelToolbar";
@@ -44,30 +45,28 @@ function PlaybackPerformanceItem(props: PlaybackPerformanceItemProps): ReactElem
       />
       <Stack>
         <Typography variant="body2">
-          {(last(props.points) ?? { value: 0 }).value.toFixed(props.decimalPlaces)}
+          {(_.last(props.points) ?? { value: 0 }).value.toFixed(props.decimalPlaces)}
           {props.label}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          {(sumBy(props.points, "value") / props.points.length).toFixed(props.decimalPlaces)} avg
+          {(_.sumBy(props.points, "value") / props.points.length).toFixed(props.decimalPlaces)} avg
         </Typography>
       </Stack>
     </Stack>
   );
 }
 
-export type UnconnectedPlaybackPerformanceProps = {
-  readonly timestamp: number;
-  readonly activeData?: PlayerStateActiveData;
-};
+type UnconnectedPlaybackPerformanceProps = Immutable<{
+  timestamp: number;
+  activeData?: PlayerStateActiveData;
+}>;
 
-// Exported for stories
-export function UnconnectedPlaybackPerformance({
+function UnconnectedPlaybackPerformance({
   timestamp,
   activeData,
 }: UnconnectedPlaybackPerformanceProps): JSX.Element {
-  const playbackInfo = React.useRef<
-    { timestamp: number; activeData: PlayerStateActiveData } | undefined
-  >();
+  const playbackInfo =
+    React.useRef<Immutable<{ timestamp: number; activeData: PlayerStateActiveData } | undefined>>();
   const lastPlaybackInfo = playbackInfo.current;
   if (activeData && (!playbackInfo.current || playbackInfo.current.activeData !== activeData)) {
     playbackInfo.current = { timestamp, activeData };

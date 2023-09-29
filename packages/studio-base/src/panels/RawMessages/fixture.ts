@@ -13,7 +13,6 @@
 
 import { Fixture } from "@foxglove/studio-base/stories/PanelSetup";
 
-// ts-prune-ignore-next
 export const fixture: Fixture = {
   topics: [
     { name: "/msgs/big_topic", schemaName: "msgs/big_topic" },
@@ -236,7 +235,6 @@ export const fixture: Fixture = {
 };
 
 // separate fixture so that we only need to define datatypes for small subset of types
-// ts-prune-ignore-next
 export const enumFixture: Fixture = {
   datatypes: new Map(
     Object.entries({
@@ -271,12 +269,13 @@ const exampleMessage = {
   state: 1,
   justField: 0,
   color: 2,
+  cmykColors: [0, 1, 2, 3],
   animal__foxglove_enum: {},
   animal: 10000,
   sentence: 'String with "quotes" and /slashes/.',
+  pets: [10000, 10001, 10001, 10000],
 };
 
-// ts-prune-ignore-next
 export const enumAdvancedFixture: Fixture = {
   datatypes: new Map(
     Object.entries({
@@ -290,8 +289,15 @@ export const enumAdvancedFixture: Fixture = {
           { type: "uint8", name: "YELLOW", isConstant: true, value: 1 },
           { type: "uint8", name: "GREEN", isConstant: true, value: 2 },
           { type: "uint8", name: "color", isArray: false },
+          { type: "uint8", name: "CYAN", isConstant: true, value: 0 },
+          { type: "uint8", name: "MAGENTA", isConstant: true, value: 1 },
+          { type: "uint8", name: "YELLOW", isConstant: true, value: 2 },
+          { type: "uint8", name: "BLACK", isConstant: true, value: 3 },
+          { type: "uint8", name: "cmykColors", isArray: true },
           { type: "baz/animals", name: "animal__foxglove_enum", isArray: false },
           { type: "uint32", name: "animal", isArray: false },
+          { type: "baz/animals", name: "pets__foxglove_enum", isArray: false },
+          { type: "uint32", name: "pets", isArray: true },
         ],
       },
       "baz/enum_advanced_array": {
@@ -319,7 +325,6 @@ export const enumAdvancedFixture: Fixture = {
   },
 };
 
-// ts-prune-ignore-next
 export const withMissingData: Fixture = {
   datatypes: new Map(
     Object.entries({
@@ -344,7 +349,6 @@ export const withMissingData: Fixture = {
   },
 };
 
-// ts-prune-ignore-next
 export const topicsToDiffFixture: Fixture = {
   datatypes: enumAdvancedFixture.datatypes,
   topics: [
@@ -382,7 +386,6 @@ export const topicsToDiffFixture: Fixture = {
   },
 };
 
-// ts-prune-ignore-next
 export const topicsWithIdsToDiffFixture: Fixture = {
   datatypes: enumAdvancedFixture.datatypes,
   topics: [
@@ -426,7 +429,6 @@ export const topicsWithIdsToDiffFixture: Fixture = {
   },
 };
 
-// ts-prune-ignore-next
 export const multipleNumberMessagesFixture: Fixture = {
   datatypes: new Map(
     Object.entries({
@@ -463,7 +465,6 @@ export const multipleNumberMessagesFixture: Fixture = {
   },
 };
 
-// ts-prune-ignore-next
 export const multipleMessagesFilter: Fixture = {
   datatypes: new Map(
     Object.entries({

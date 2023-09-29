@@ -2,19 +2,6 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-enum AppEventCategory {
-  LIFECYCLE = "LIFECYCLE",
-  DIALOG = "DIALOG",
-  APP_BAR = "APP_BAR",
-  HELP_MENU = "HELP_MENU",
-  PLAYERS = "PLAYERS",
-  LAYOUTS = "LAYOUTS",
-  PANELS = "PANELS",
-  VARIABLES = "VARIABLES",
-  EXTENSIONS = "EXTENSIONS",
-  EXPERIMENTAL_FEATURES = "EXPERIMENTAL_FEATURES",
-}
-
 enum AppEvent {
   APP_INIT = "Studio: App Initialized",
 
@@ -25,6 +12,17 @@ enum AppEvent {
 
   // App Bar events
   APP_BAR_CLICK_CTA = "Studio: App Bar CTA CLicked",
+
+  // Tour events
+  TOUR_PROMPT_SHOWN = "Studio: New UI Tour prompt shown",
+  TOUR_STARTED = "Studio: New UI Tour started",
+  TOUR_BACK = "Studio: New UI Tour step back",
+  TOUR_NEXT = "Studio: New UI Tour step next",
+  TOUR_COMPLETED = "Studio: New UI Tour completed",
+  TOUR_DISMISSED = "Studio: New UI Tour dismissed",
+
+  // App Menu events
+  APP_MENU_CLICK = "Studio: App Menu Clicked",
 
   // Help Menu events
   HELP_MENU_CLICK_CTA = "Studio: Help Menu CTA Clicked",
@@ -59,138 +57,15 @@ enum AppEvent {
   VARIABLE_ADD = "Studio: Variable Added",
   VARIABLE_DELETE = "Studio: Variable Deleted",
 
+  // Image events
+  IMAGE_DOWNLOAD = "Studio: Image Downloaded",
+
   // Extension events
   EXTENSION_INSTALL = "Studio: Extension Installed",
   EXTENSION_UNINSTALL = "Studio: Extension Uninstalled",
 
   // Experimental features
   EXPERIMENTAL_FEATURE_TOGGLE = "Studio: Experimental Feature Toggled",
-}
-
-/** https://develop.sentry.dev/sdk/event-payloads/breadcrumbs/#breadcrumb-types */
-enum SentryBreadcrumbType {
-  DEFAULT = "default",
-  DEBUG = "debug",
-  ERROR = "error",
-  NAVIGATION = "navigation",
-  HTTP = "http",
-  INFO = "info",
-  QUERY = "query",
-  TRANSACTION = "transaction",
-  UI = "ui",
-  USER = "user",
-}
-
-export function getEventCategory(event: AppEvent): AppEventCategory {
-  switch (event) {
-    case AppEvent.APP_INIT:
-      return AppEventCategory.LIFECYCLE;
-
-    case AppEvent.DIALOG_SELECT_VIEW:
-    case AppEvent.DIALOG_CLOSE:
-    case AppEvent.DIALOG_CLICK_CTA:
-      return AppEventCategory.DIALOG;
-
-    case AppEvent.APP_BAR_CLICK_CTA:
-      return AppEventCategory.APP_BAR;
-
-    case AppEvent.HELP_MENU_CLICK_CTA:
-      return AppEventCategory.HELP_MENU;
-
-    case AppEvent.PLAYER_CONSTRUCTED:
-    case AppEvent.PLAYER_PLAY:
-    case AppEvent.PLAYER_SEEK:
-    case AppEvent.PLAYER_SET_SPEED:
-    case AppEvent.PLAYER_PAUSE:
-    case AppEvent.PLAYER_CLOSE:
-      return AppEventCategory.PLAYERS;
-
-    case AppEvent.LAYOUT_UPDATE:
-    case AppEvent.LAYOUT_CREATE:
-    case AppEvent.LAYOUT_DUPLICATE:
-    case AppEvent.LAYOUT_RENAME:
-    case AppEvent.LAYOUT_DELETE:
-    case AppEvent.LAYOUT_SELECT:
-    case AppEvent.LAYOUT_IMPORT:
-    case AppEvent.LAYOUT_EXPORT:
-    case AppEvent.LAYOUT_SHARE:
-    case AppEvent.LAYOUT_OVERWRITE:
-    case AppEvent.LAYOUT_REVERT:
-    case AppEvent.LAYOUT_MAKE_PERSONAL_COPY:
-      return AppEventCategory.LAYOUTS;
-
-    case AppEvent.PANEL_ADD:
-    case AppEvent.PANEL_DELETE:
-      return AppEventCategory.PANELS;
-
-    case AppEvent.VARIABLE_ADD:
-    case AppEvent.VARIABLE_DELETE:
-      return AppEventCategory.VARIABLES;
-
-    case AppEvent.EXTENSION_INSTALL:
-    case AppEvent.EXTENSION_UNINSTALL:
-      return AppEventCategory.EXTENSIONS;
-
-    case AppEvent.EXPERIMENTAL_FEATURE_TOGGLE:
-      return AppEventCategory.EXPERIMENTAL_FEATURES;
-  }
-}
-
-export function getEventBreadcrumbType(event: AppEvent): SentryBreadcrumbType {
-  switch (event) {
-    case AppEvent.APP_INIT:
-      return SentryBreadcrumbType.DEFAULT;
-
-    case AppEvent.DIALOG_SELECT_VIEW:
-    case AppEvent.DIALOG_CLOSE:
-    case AppEvent.DIALOG_CLICK_CTA:
-      return SentryBreadcrumbType.USER;
-
-    case AppEvent.APP_BAR_CLICK_CTA:
-      return SentryBreadcrumbType.USER;
-
-    case AppEvent.HELP_MENU_CLICK_CTA:
-      return SentryBreadcrumbType.USER;
-
-    case AppEvent.PLAYER_CONSTRUCTED:
-      return SentryBreadcrumbType.TRANSACTION;
-
-    case AppEvent.PLAYER_PLAY:
-    case AppEvent.PLAYER_SEEK:
-    case AppEvent.PLAYER_SET_SPEED:
-    case AppEvent.PLAYER_PAUSE:
-      return SentryBreadcrumbType.USER;
-
-    case AppEvent.PLAYER_CLOSE:
-      return SentryBreadcrumbType.TRANSACTION;
-
-    case AppEvent.LAYOUT_UPDATE:
-    case AppEvent.LAYOUT_CREATE:
-    case AppEvent.LAYOUT_DUPLICATE:
-    case AppEvent.LAYOUT_RENAME:
-    case AppEvent.LAYOUT_DELETE:
-    case AppEvent.LAYOUT_SELECT:
-    case AppEvent.LAYOUT_IMPORT:
-    case AppEvent.LAYOUT_EXPORT:
-    case AppEvent.LAYOUT_SHARE:
-    case AppEvent.LAYOUT_OVERWRITE:
-    case AppEvent.LAYOUT_REVERT:
-    case AppEvent.LAYOUT_MAKE_PERSONAL_COPY:
-    case AppEvent.PANEL_ADD:
-    case AppEvent.PANEL_DELETE:
-      return SentryBreadcrumbType.USER;
-
-    case AppEvent.VARIABLE_ADD:
-    case AppEvent.VARIABLE_DELETE:
-      return SentryBreadcrumbType.USER;
-
-    case AppEvent.EXTENSION_INSTALL:
-    case AppEvent.EXTENSION_UNINSTALL:
-      return SentryBreadcrumbType.USER;
-
-    case AppEvent.EXPERIMENTAL_FEATURE_TOGGLE:
-      return SentryBreadcrumbType.USER;
-  }
 }
 
 interface IAnalytics {

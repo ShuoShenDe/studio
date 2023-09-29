@@ -12,7 +12,7 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { renderHook, act } from "@testing-library/react-hooks";
+import { renderHook, act } from "@testing-library/react";
 import { PropsWithChildren, useState } from "react";
 
 import { MessagePipelineProvider } from "@foxglove/studio-base/components/MessagePipeline";
@@ -53,29 +53,26 @@ describe("useMessageReducer", () => {
   });
 
   it("requires exactly one 'add' callback", () => {
-    expect(React.version).toMatch(/^17\./);
-    // Disabled due to Jest being unable to catch the exception without failing the test (https://github.com/foxglove/studio/pull/5152)
-    // Re-enable and switch to expect.toThrow when upgrading to React 18 (https://github.com/foxglove/studio/commit/5f50ba279bfed3d5b16db5478594f945b0b6dcaf#diff-dc7f35671f5375e2127b759c5edfa9a81eea1534ad39eb4c6133895c6142331f)
-
-    // const restore = jest.fn().mockReturnValue(1);
-    // const addMessage = jest.fn();
-    // const addMessages = jest.fn();
-    // const { result: result1 } = renderHook(() =>
-    //   PanelAPI.useMessageReducer({ topics: ["/foo"], restore }),
-    // );
-    // expect(result1.error).toEqual(
-    //   new Error("useMessageReducer must be provided with exactly one of addMessage or addMessages"),
-    // );
-    // const { result: result2 } = renderHook(() =>
-    //   PanelAPI.useMessageReducer({ topics: ["/foo"], restore, addMessage, addMessages }),
-    // );
-    // expect(result2.error).toEqual(
-    //   new Error("useMessageReducer must be provided with exactly one of addMessage or addMessages"),
-    // );
+    const restore = jest.fn().mockReturnValue(1);
+    const addMessage = jest.fn();
+    const addMessages = jest.fn();
+    expect(() =>
+      renderHook(() => PanelAPI.useMessageReducer({ topics: ["/foo"], restore })),
+    ).toThrow(
+      new Error("useMessageReducer must be provided with exactly one of addMessage or addMessages"),
+    );
+    expect(() =>
+      renderHook(() =>
+        PanelAPI.useMessageReducer({ topics: ["/foo"], restore, addMessage, addMessages }),
+      ),
+    ).toThrow(
+      new Error("useMessageReducer must be provided with exactly one of addMessage or addMessages"),
+    );
+    (console.error as jest.Mock).mockClear();
   });
 
   it("calls restore to initialize and addMessage for initial messages", async () => {
-    const message: MessageEvent<unknown> = {
+    const message: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },
@@ -105,7 +102,7 @@ describe("useMessageReducer", () => {
   });
 
   it("calls restore to initialize and addMessages for initial messages", async () => {
-    const message: MessageEvent<unknown> = {
+    const message: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },
@@ -137,14 +134,14 @@ describe("useMessageReducer", () => {
   });
 
   it("calls addMessage for messages added later", async () => {
-    const message1: MessageEvent<unknown> = {
+    const message1: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },
       schemaName: "foo",
       sizeInBytes: 0,
     };
-    const message2: MessageEvent<unknown> = {
+    const message2: MessageEvent = {
       topic: "/bar",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 3 },
@@ -197,21 +194,21 @@ describe("useMessageReducer", () => {
   });
 
   it("calls addMessages for messages added later", async () => {
-    const message1: MessageEvent<unknown> = {
+    const message1: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },
       schemaName: "foo",
       sizeInBytes: 0,
     };
-    const message2: MessageEvent<unknown> = {
+    const message2: MessageEvent = {
       topic: "/bar",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 3 },
       schemaName: "bar",
       sizeInBytes: 0,
     };
-    const message3: MessageEvent<unknown> = {
+    const message3: MessageEvent = {
       topic: "/bar",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 4 },
@@ -310,7 +307,7 @@ describe("useMessageReducer", () => {
   });
 
   it("clears everything on seek", () => {
-    const message1: MessageEvent<unknown> = {
+    const message1: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },
@@ -351,7 +348,7 @@ describe("useMessageReducer", () => {
   });
 
   function makeWrapper(player: Player) {
-    function Wrapper({ children }: PropsWithChildren<unknown>) {
+    function Wrapper({ children }: PropsWithChildren) {
       const [config] = useState(() => makeMockAppConfiguration());
       return (
         <AppConfigurationContext.Provider value={config}>
@@ -371,14 +368,14 @@ describe("useMessageReducer", () => {
     restore.mockReturnValue(0);
     addMessage.mockImplementation((_, msg) => msg.message.value);
 
-    const message1: MessageEvent<unknown> = {
+    const message1: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 1 },
       schemaName: "foo",
       sizeInBytes: 0,
     };
-    const message2: MessageEvent<unknown> = {
+    const message2: MessageEvent = {
       topic: "/bar",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },
@@ -432,7 +429,9 @@ describe("useMessageReducer", () => {
           },
         })),
     );
-    await act(async () => await promise);
+    await act(async () => {
+      await promise;
+    });
 
     // restore call with undefined, then add message called with our subscribed message
     expect(restore.mock.calls).toEqual([[undefined], [undefined]]);
@@ -471,7 +470,9 @@ describe("useMessageReducer", () => {
           },
         })),
     );
-    await act(async () => await promise2);
+    await act(async () => {
+      await promise2;
+    });
 
     expect(restore.mock.calls).toEqual([[undefined], [undefined]]);
     expect(addMessage.mock.calls).toEqual([
@@ -484,7 +485,7 @@ describe("useMessageReducer", () => {
   });
 
   it("doesn't re-render when player topics or other playerState changes", async () => {
-    const message: MessageEvent<unknown> = {
+    const message: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },
@@ -556,7 +557,7 @@ describe("useMessageReducer", () => {
   });
 
   it("restore called when addMessages changes", async () => {
-    const message1: MessageEvent<unknown> = {
+    const message1: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },

@@ -2,7 +2,8 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { screen } from "@testing-library/react";
+import { StoryObj } from "@storybook/react";
+import { userEvent, screen } from "@storybook/testing-library";
 
 import { MessageEvent } from "@foxglove/studio";
 import { PlayerCapabilities, Topic } from "@foxglove/studio-base/players/types";
@@ -11,17 +12,18 @@ import delay from "@foxglove/studio-base/util/delay";
 
 import { QUAT_IDENTITY, rad2deg } from "./common";
 import useDelayedFixture from "./useDelayedFixture";
-import ThreeDeeRender from "../index";
+import ThreeDeePanel from "../index";
 import { PublishClickType } from "../renderables/PublishClickTool";
 import { TransformStamped } from "../ros";
 
 export default {
   title: "panels/ThreeDeeRender/PublishClickTool",
-  component: ThreeDeeRender,
+  component: ThreeDeePanel,
+  parameters: { colorScheme: "dark" },
 };
 
-export const Point = Object.assign(PublishClickToolTemplate.bind({}), {
-  parameters: { colorScheme: "dark" },
+export const Point: StoryObj<{ type: PublishClickType }> = {
+  render: PublishClickToolTemplate,
   args: { type: "point" },
   play: async () => {
     (await screen.findByTestId("publish-button")).click();
@@ -34,10 +36,10 @@ export const Point = Object.assign(PublishClickToolTemplate.bind({}), {
     await delay(10);
     await new Promise((resolve) => requestAnimationFrame(resolve));
   },
-});
+};
 
-export const PosePosition = Object.assign(PublishClickToolTemplate.bind({}), {
-  parameters: { colorScheme: "dark" },
+export const PosePosition: StoryObj<{ type: PublishClickType }> = {
+  render: PublishClickToolTemplate,
   args: { type: "pose" },
   play: async () => {
     (await screen.findByTestId("publish-button")).click();
@@ -50,10 +52,10 @@ export const PosePosition = Object.assign(PublishClickToolTemplate.bind({}), {
     await delay(10);
     await new Promise((resolve) => requestAnimationFrame(resolve));
   },
-});
+};
 
-export const PoseComplete = Object.assign(PublishClickToolTemplate.bind({}), {
-  parameters: { colorScheme: "dark" },
+export const PoseComplete: StoryObj<{ type: PublishClickType }> = {
+  render: PublishClickToolTemplate,
   args: { type: "pose" },
   play: async () => {
     (await screen.findByTestId("publish-button")).click();
@@ -72,10 +74,10 @@ export const PoseComplete = Object.assign(PublishClickToolTemplate.bind({}), {
     await delay(100);
     await new Promise((resolve) => requestAnimationFrame(resolve));
   },
-});
+};
 
-export const PoseEstimatePosition = Object.assign(PublishClickToolTemplate.bind({}), {
-  parameters: { colorScheme: "dark" },
+export const PoseEstimatePosition: StoryObj<{ type: PublishClickType }> = {
+  render: PublishClickToolTemplate,
   args: { type: "pose_estimate" },
   play: async () => {
     (await screen.findByTestId("publish-button")).click();
@@ -88,10 +90,10 @@ export const PoseEstimatePosition = Object.assign(PublishClickToolTemplate.bind(
     await delay(100);
     await new Promise((resolve) => requestAnimationFrame(resolve));
   },
-});
+};
 
-export const PoseEstimateComplete = Object.assign(PublishClickToolTemplate.bind({}), {
-  parameters: { colorScheme: "dark" },
+export const PoseEstimateComplete: StoryObj<{ type: PublishClickType }> = {
+  render: PublishClickToolTemplate,
   args: { type: "pose_estimate" },
   play: async () => {
     (await screen.findByTestId("publish-button")).click();
@@ -110,9 +112,34 @@ export const PoseEstimateComplete = Object.assign(PublishClickToolTemplate.bind(
     await delay(100);
     await new Promise((resolve) => requestAnimationFrame(resolve));
   },
-});
+};
 
-function PublishClickToolTemplate({ type }: { type: PublishClickType }): JSX.Element {
+export const Settings: StoryObj<typeof PublishClickToolTemplate> = {
+  render: PublishClickToolTemplate,
+  args: { type: "pose_estimate", includeSettings: true },
+  play: async () => {
+    await userEvent.click(await screen.findByTestId("settings__nodeHeaderToggle__general"));
+    await userEvent.click(await screen.findByTestId("settings__nodeHeaderToggle__publish"));
+  },
+};
+
+export const SettingsChinese: StoryObj<typeof PublishClickToolTemplate> = {
+  ...Settings,
+  parameters: { forceLanguage: "zh" },
+};
+
+export const SettingsJapanese: StoryObj<typeof PublishClickToolTemplate> = {
+  ...Settings,
+  parameters: { forceLanguage: "ja" },
+};
+
+function PublishClickToolTemplate({
+  type,
+  includeSettings,
+}: {
+  type: PublishClickType;
+  includeSettings?: boolean;
+}): JSX.Element {
   const topics: Topic[] = [{ name: "/tf", schemaName: "geometry_msgs/TransformStamped" }];
   const tf1: MessageEvent<TransformStamped> = {
     topic: "/tf",
@@ -140,10 +167,10 @@ function PublishClickToolTemplate({ type }: { type: PublishClickType }): JSX.Ele
   });
 
   return (
-    <PanelSetup fixture={fixture}>
-      <ThreeDeeRender
+    <PanelSetup fixture={fixture} includeSettings={includeSettings}>
+      <ThreeDeePanel
         overrideConfig={{
-          ...ThreeDeeRender.defaultConfig,
+          ...ThreeDeePanel.defaultConfig,
           followTf: "base_link",
           layers: {
             grid: { layerId: "foxglove.Grid" },

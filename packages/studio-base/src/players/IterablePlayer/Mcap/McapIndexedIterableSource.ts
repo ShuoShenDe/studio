@@ -4,6 +4,7 @@
 
 import { McapIndexedReader, McapTypes } from "@mcap/core";
 
+import { pickFields } from "@foxglove/den/records";
 import Logger from "@foxglove/log";
 import { ParsedChannel, parseChannel } from "@foxglove/mcap-support";
 import { Time, fromNanoSec, toNanoSec, compare } from "@foxglove/rostime";
@@ -21,22 +22,22 @@ import { RosDatatypes } from "@foxglove/studio-base/types/RosDatatypes";
 const log = Logger.getLogger(__filename);
 
 export class McapIndexedIterableSource implements IIterableSource {
-  private reader: McapIndexedReader;
-  private channelInfoById = new Map<
+  #reader: McapIndexedReader;
+  #channelInfoById = new Map<
     number,
-    { channel: McapTypes.Channel; parsedChannel: ParsedChannel; schemaName: string }
+    { channel: McapTypes.Channel; parsedChannel: ParsedChannel; schemaName: string | undefined }
   >();
-  private start?: Time;
-  private end?: Time;
+  #start?: Time;
+  #end?: Time;
 
   public constructor(reader: McapIndexedReader) {
-    this.reader = reader;
+    this.#reader = reader;
   }
 
   public async initialize(): Promise<Initalization> {
     let startTime: bigint | undefined;
     let endTime: bigint | undefined;
-    for (const chunk of this.reader.chunkIndexes) {
+    for (const chunk of this.#reader.chunkIndexes) {
       if (startTime == undefined || chunk.messageStartTime < startTime) {
         startTime = chunk.messageStartTime;
       }
@@ -49,17 +50,11 @@ export class McapIndexedIterableSource implements IIterableSource {
     const topicsByName = new Map<string, Topic>();
     const datatypes: RosDatatypes = new Map();
     const problems: PlayerProblem[] = [];
+    const publishersByTopic = new Map<string, Set<string>>();
 
-    for (const channel of this.reader.channelsById.values()) {
-      if (channel.schemaId === 0) {
-        problems.push({
-          severity: "error",
-          message: `Channel ${channel.id} has no schema; channels without schemas are not supported`,
-        });
-        continue;
-      }
-      const schema = this.reader.schemasById.get(channel.schemaId);
-      if (schema == undefined) {
+    for (const channel of this.#reader.channelsById.values()) {
+      const schema = this.#reader.schemasById.get(channel.schemaId);
+      if (channel.schemaId !== 0 && schema == undefined) {
         problems.push({
           severity: "error",
           message: `Missing schema info for schema id ${channel.schemaId} (channel ${channel.id}, topic ${channel.topic})`,
@@ -78,35 +73,47 @@ export class McapIndexedIterableSource implements IIterableSource {
         });
         continue;
       }
-      this.channelInfoById.set(channel.id, { channel, parsedChannel, schemaName: schema.name });
+      this.#channelInfoById.set(channel.id, { channel, parsedChannel, schemaName: schema?.name });
 
       let topic = topicsByName.get(channel.topic);
       if (!topic) {
-        topic = { name: channel.topic, schemaName: schema.name };
+        topic = { name: channel.topic, schemaName: schema?.name };
         topicsByName.set(channel.topic, topic);
 
-        const numMessages = this.reader.statistics?.channelMessageCounts.get(channel.id);
+        const numMessages = this.#reader.statistics?.channelMessageCounts.get(channel.id);
         if (numMessages != undefined) {
           topicStats.set(channel.topic, { numMessages: Number(numMessages) });
         }
       }
+
+      // Track the publisher for this topic. "callerid" is defined in the MCAP ROS 1 Well-known
+      // profile at <https://mcap.dev/specification/appendix.html>. We skip the profile check to
+      // allow non-ROS profiles to utilize this functionality as well
+      const publisherId = channel.metadata.get("callerid") ?? String(channel.id);
+      let publishers = publishersByTopic.get(channel.topic);
+      if (!publishers) {
+        publishers = new Set();
+        publishersByTopic.set(channel.topic, publishers);
+      }
+      publishers.add(publisherId);
+
       // Final datatypes is an unholy union of schemas across all channels
       for (const [name, datatype] of parsedChannel.datatypes) {
         datatypes.set(name, datatype);
       }
     }
 
-    this.start = fromNanoSec(startTime ?? 0n);
-    this.end = fromNanoSec(endTime ?? startTime ?? 0n);
+    this.#start = fromNanoSec(startTime ?? 0n);
+    this.#end = fromNanoSec(endTime ?? startTime ?? 0n);
 
     return {
-      start: this.start,
-      end: this.end,
+      start: this.#start,
+      end: this.#end,
       topics: [...topicsByName.values()],
       datatypes,
-      profile: this.reader.header.profile,
+      profile: this.#reader.header.profile,
       problems,
-      publishersByTopic: new Map(),
+      publishersByTopic,
       topicStats,
     };
   }
@@ -115,19 +122,22 @@ export class McapIndexedIterableSource implements IIterableSource {
     args: MessageIteratorArgs,
   ): AsyncIterableIterator<Readonly<IteratorResult>> {
     const topics = args.topics;
-    const start = args.start ?? this.start;
-    const end = args.end ?? this.end;
+    const start = args.start ?? this.#start;
+    const end = args.end ?? this.#end;
 
-    if (topics.length === 0 || !start || !end) {
+    if (topics.size === 0 || !start || !end) {
       return;
     }
 
-    for await (const message of this.reader.readMessages({
+    const topicNames = Array.from(topics.keys());
+
+    for await (const message of this.#reader.readMessages({
       startTime: toNanoSec(start),
       endTime: toNanoSec(end),
-      topics,
+      topics: topicNames,
+      validateCrcs: false,
     })) {
-      const channelInfo = this.channelInfoById.get(message.channelId);
+      const channelInfo = this.#channelInfoById.get(message.channelId);
       if (!channelInfo) {
         yield {
           type: "problem",
@@ -139,15 +149,21 @@ export class McapIndexedIterableSource implements IIterableSource {
         continue;
       }
       try {
+        const msg = channelInfo.parsedChannel.deserialize(message.data) as Record<string, unknown>;
+        const spec = args.topics.get(channelInfo.channel.topic);
+        const payload = spec?.fields != undefined ? pickFields(msg, spec.fields) : msg;
         yield {
           type: "message-event",
           msgEvent: {
             topic: channelInfo.channel.topic,
             receiveTime: fromNanoSec(message.logTime),
             publishTime: fromNanoSec(message.publishTime),
-            message: channelInfo.parsedChannel.deserializer(message.data),
-            sizeInBytes: message.data.byteLength,
-            schemaName: channelInfo.schemaName,
+            message: payload,
+            // Treat sliced messages as zero bytes. This is a rough approximation of course but the
+            // alternative is taking the performance hit of sizing the sliced fields for each
+            // message.
+            sizeInBytes: spec?.fields == undefined ? message.data.byteLength : 0,
+            schemaName: channelInfo.schemaName ?? "",
           },
         };
       } catch (error) {
@@ -163,22 +179,21 @@ export class McapIndexedIterableSource implements IIterableSource {
     }
   }
 
-  public async getBackfillMessages(
-    args: GetBackfillMessagesArgs,
-  ): Promise<MessageEvent<unknown>[]> {
+  public async getBackfillMessages(args: GetBackfillMessagesArgs): Promise<MessageEvent[]> {
     const { topics, time } = args;
 
-    const messages: MessageEvent<unknown>[] = [];
-    for (const topic of topics) {
+    const messages: MessageEvent[] = [];
+    for (const topic of topics.keys()) {
       // NOTE: An iterator is made for each topic to get the latest message on that topic.
       // An single iterator for all the topics could result in iterating through many
       // irrelevant messages to get to an older message on a topic.
-      for await (const message of this.reader.readMessages({
+      for await (const message of this.#reader.readMessages({
         endTime: toNanoSec(time),
         topics: [topic],
         reverse: true,
+        validateCrcs: false,
       })) {
-        const channelInfo = this.channelInfoById.get(message.channelId);
+        const channelInfo = this.#channelInfoById.get(message.channelId);
         if (!channelInfo) {
           log.error(`Missing channel info for channel: ${message.channelId} on topic: ${topic}`);
           continue;
@@ -189,9 +204,9 @@ export class McapIndexedIterableSource implements IIterableSource {
             topic: channelInfo.channel.topic,
             receiveTime: fromNanoSec(message.logTime),
             publishTime: fromNanoSec(message.publishTime),
-            message: channelInfo.parsedChannel.deserializer(message.data),
+            message: channelInfo.parsedChannel.deserialize(message.data),
             sizeInBytes: message.data.byteLength,
-            schemaName: channelInfo.schemaName,
+            schemaName: channelInfo.schemaName ?? "",
           });
         } catch (err) {
           log.error(err);

@@ -20,6 +20,7 @@
     "prepack": "tsc -b"
   },
   "devDependencies": {
-    "typescript": "4.9.4"
+    "@foxglove/tsconfig": "2.0.0",
+    "typescript": "5.2.2"
   }
 }

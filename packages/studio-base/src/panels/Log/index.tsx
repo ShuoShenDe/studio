@@ -11,24 +11,47 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import produce from "immer";
-import { set } from "lodash";
+import { Divider } from "@mui/material";
+import { produce } from "immer";
+import * as _ from "lodash-es";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 import { SettingsTreeAction } from "@foxglove/studio";
 import { useDataSourceInfo, useMessagesByTopic } from "@foxglove/studio-base/PanelAPI";
 import Panel from "@foxglove/studio-base/components/Panel";
 import PanelToolbar from "@foxglove/studio-base/components/PanelToolbar";
 import Stack from "@foxglove/studio-base/components/Stack";
+import { FilterTagInput } from "@foxglove/studio-base/panels/Log/FilterTagInput";
 import { usePanelSettingsTreeUpdate } from "@foxglove/studio-base/providers/PanelStateContextProvider";
 import { SaveConfig } from "@foxglove/studio-base/types/panels";
 
-import FilterBar, { FilterBarProps } from "./FilterBar";
 import LogList from "./LogList";
 import { normalizedLogMessage } from "./conversion";
 import filterMessages from "./filterMessages";
 import { buildSettingsTree } from "./settings";
 import { Config, LogMessageEvent } from "./types";
+
+type FilterBarProps = {
+  searchTerms: Set<string>;
+  minLogLevel: number;
+  onFilterChange: (filter: { minLogLevel: number; searchTerms: string[] }) => void;
+};
+
+function FilterBar(props: FilterBarProps): JSX.Element {
+  return (
+    <FilterTagInput
+      items={[...props.searchTerms]}
+      suggestions={[]}
+      onChange={(items: string[]) => {
+        props.onFilterChange({
+          minLogLevel: props.minLogLevel,
+          searchTerms: items,
+        });
+      }}
+    />
+  );
+}
 
 type Props = {
   config: Config;
@@ -39,6 +62,7 @@ const SUPPORTED_DATATYPES = [
   "foxglove_msgs/Log",
   "foxglove_msgs/msg/Log",
   "foxglove.Log",
+  "foxglove::Log",
   "rcl_interfaces/msg/Log",
   "ros.rcl_interfaces.Log",
   "ros.rosgraph_msgs.Log",
@@ -47,9 +71,10 @@ const SUPPORTED_DATATYPES = [
 
 const LogPanel = React.memo(({ config, saveConfig }: Props) => {
   const { topics } = useDataSourceInfo();
-  const { minLogLevel, searchTerms } = config;
+  const { minLogLevel, searchTerms, nameFilter } = config;
 
   const updatePanelSettingsTree = usePanelSettingsTreeUpdate();
+  const { t } = useTranslation("log");
 
   const onFilterChange = useCallback<FilterBarProps["onFilterChange"]>(
     (filter) => {
@@ -59,7 +84,10 @@ const LogPanel = React.memo(({ config, saveConfig }: Props) => {
   );
 
   const availableTopics = useMemo(
-    () => topics.filter((topic) => SUPPORTED_DATATYPES.includes(topic.schemaName)),
+    () =>
+      topics.filter(
+        (topic) => topic.schemaName != undefined && SUPPORTED_DATATYPES.includes(topic.schemaName),
+      ),
     [topics],
   );
 
@@ -71,25 +99,6 @@ const LogPanel = React.memo(({ config, saveConfig }: Props) => {
     topics: [topicToRender],
     historySize: 100000,
   }) as { [key: string]: LogMessageEvent[] };
-
-  const actionHandler = useCallback(
-    (action: SettingsTreeAction) => {
-      if (action.action !== "update") {
-        return;
-      }
-
-      const { path, value } = action.payload;
-      saveConfig(produce<Config>((draft) => set(draft, path.slice(1), value)));
-    },
-    [saveConfig],
-  );
-
-  useEffect(() => {
-    updatePanelSettingsTree({
-      actionHandler,
-      nodes: buildSettingsTree(topicToRender, availableTopics),
-    });
-  }, [actionHandler, availableTopics, topicToRender, updatePanelSettingsTree]);
 
   // avoid making new sets for node names
   // the filter bar uess the node names during on-demand filtering
@@ -107,11 +116,70 @@ const LogPanel = React.memo(({ config, saveConfig }: Props) => {
     return seenNodeNamesCache.current;
   }, [messages]);
 
+  const actionHandler = useCallback(
+    (action: SettingsTreeAction) => {
+      if (action.action === "update") {
+        const { path, value } = action.payload;
+        if (path[0] === "nameFilter") {
+          saveConfig(produce<Config>((draft) => _.set(draft, path, value)));
+        } else {
+          saveConfig(produce<Config>((draft) => _.set(draft, path.slice(1), value)));
+        }
+      } /* perform-node-action */ else {
+        if (!["show-all", "hide-all"].includes(action.payload.id)) {
+          return;
+        }
+
+        const visible = action.payload.id === "show-all";
+        saveConfig(
+          produce<Config>((draft) => {
+            const newNameFilter = Object.fromEntries(
+              Object.entries(draft.nameFilter ?? {}).map(([k, _v]) => [k, { visible }]),
+            );
+            seenNodeNames.forEach((name) => (newNameFilter[name] = { visible }));
+            return _.set(draft, ["nameFilter"], newNameFilter);
+          }),
+        );
+      }
+    },
+    [saveConfig, seenNodeNames],
+  );
+
+  useEffect(() => {
+    updatePanelSettingsTree({
+      actionHandler,
+      enableFilter: true,
+      nodes: buildSettingsTree(
+        topicToRender,
+        minLogLevel,
+        nameFilter ?? {},
+        availableTopics,
+        Array.from(seenNodeNames),
+        t,
+      ),
+    });
+  }, [
+    actionHandler,
+    availableTopics,
+    topicToRender,
+    minLogLevel,
+    nameFilter,
+    updatePanelSettingsTree,
+    seenNodeNames,
+    seenNodeNames.size, // Needed as we do not create a new Set when node names change
+    t,
+  ]);
+
   const searchTermsSet = useMemo(() => new Set(searchTerms), [searchTerms]);
 
   const filteredMessages = useMemo(
-    () => filterMessages(messages, { minLogLevel, searchTerms }),
-    [messages, minLogLevel, searchTerms],
+    () =>
+      filterMessages(messages, {
+        minLogLevel,
+        searchTerms,
+        nameFilter: nameFilter ?? {},
+      }),
+    [messages, minLogLevel, searchTerms, nameFilter],
   );
 
   const normalizedMessages = useMemo(
@@ -121,15 +189,15 @@ const LogPanel = React.memo(({ config, saveConfig }: Props) => {
 
   return (
     <Stack fullHeight>
-      <PanelToolbar>
+      <PanelToolbar />
+      <Stack flexGrow={0} padding={0.5}>
         <FilterBar
           searchTerms={searchTermsSet}
           minLogLevel={minLogLevel}
-          nodeNames={seenNodeNames}
-          messages={filteredMessages}
           onFilterChange={onFilterChange}
         />
-      </PanelToolbar>
+      </Stack>
+      <Divider />
       <Stack flexGrow={1}>
         <LogList items={normalizedMessages} />
       </Stack>

@@ -4,9 +4,18 @@
 
 import { TimestampMethod } from "@foxglove/studio-base/util/time";
 
-export type StateTransitionPath = { value: string; timestampMethod: TimestampMethod };
+export type StateTransitionPath = {
+  color?: string;
+  value: string;
+  label?: string;
+  enabled?: boolean;
+  timestampMethod: TimestampMethod;
+};
 
 export type StateTransitionConfig = {
-  paths: StateTransitionPath[];
   isSynced: boolean;
+  paths: StateTransitionPath[];
+  xAxisMaxValue?: number;
+  xAxisMinValue?: number;
+  xAxisRange?: number;
 };

@@ -2,8 +2,10 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import { GlobalStyles } from "@mui/material";
 import { Story, StoryContext } from "@storybook/react";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Condvar } from "@foxglove/den/async";
 import CssBaseline from "@foxglove/studio-base/components/CssBaseline";
@@ -12,6 +14,7 @@ import MultiProvider from "@foxglove/studio-base/components/MultiProvider";
 import StudioToastProvider from "@foxglove/studio-base/components/StudioToastProvider";
 import AppConfigurationContext from "@foxglove/studio-base/context/AppConfigurationContext";
 import { UserNodeStateProvider } from "@foxglove/studio-base/context/UserNodeStateContext";
+import { initI18n, Language } from "@foxglove/studio-base/i18n";
 import TimelineInteractionStateProvider from "@foxglove/studio-base/providers/TimelineInteractionStateProvider";
 import ReadySignalContext from "@foxglove/studio-base/stories/ReadySignalContext";
 import ThemeProvider from "@foxglove/studio-base/theme/ThemeProvider";
@@ -90,6 +93,22 @@ function StudioContextProviders({
         width: "100%",
       }}
     >
+      <GlobalStyles
+        styles={{
+          /* Help stories that don't have an intrinsic height to display correctly and consistently */
+          "#storybook-root": {
+            height: "100%",
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            position: "relative",
+            flex: "1 1 100%",
+            outline: "none",
+            overflow: "hidden",
+            zIndex: "0",
+          },
+        }}
+      />
       {
         // We need to render exactly 1 copy of GlobalCss, so the body background and font color may
         // not match the theme when rendering both color schemes in one story. If this is a problem
@@ -147,7 +166,10 @@ function StudioContextProviders({
 }
 
 function WithContextProviders(Child: Story, ctx: StoryContext): JSX.Element {
-  if ((ctx.parameters.fileName as string).startsWith("../packages/studio-base/")) {
+  if (
+    (ctx.parameters.fileName as string).includes("/packages/studio-base/") ||
+    (ctx.parameters.fileName as string).includes("/packages/theme/")
+  ) {
     return (
       <StudioContextProviders ctx={ctx}>
         <Child />
@@ -157,20 +179,51 @@ function WithContextProviders(Child: Story, ctx: StoryContext): JSX.Element {
   return <Child />;
 }
 
+function WithI18n({ ctx, children }: React.PropsWithChildren<{ ctx: StoryContext }>): JSX.Element {
+  const lang = ctx.parameters.forceLanguage ?? "en";
+  const { i18n } = useTranslation();
+  useEffect(() => {
+    void i18n.changeLanguage(lang as Language);
+  }, [i18n, lang]);
+  return <>{children}</>;
+}
+
+function WithI18nUnlessDisabled(Child: Story, ctx: StoryContext): JSX.Element {
+  const { disableI18n = false }: { disableI18n?: boolean } = ctx.parameters;
+  if (disableI18n) {
+    return <Child />;
+  }
+  return (
+    <WithI18n ctx={ctx}>
+      <Child />
+    </WithI18n>
+  );
+}
+
 export const loaders = [
-  async (): Promise<void> => {
+  async (ctx: StoryContext): Promise<void> => {
+    const { disableI18n = false }: { disableI18n?: boolean } = ctx.parameters;
     // These loaders are run once for each story when you switch between stories,
     // but the global config can't be safely loaded more than once.
     if (!loaded) {
       await waitForFonts();
+      if (!disableI18n) {
+        await initI18n();
+      }
       loaded = true;
     }
   },
 ];
 
-export const decorators = [WithContextProviders];
+export const decorators = [WithContextProviders, WithI18nUnlessDisabled];
 
 export const parameters = {
   // Disable default padding around the page body
   layout: "fullscreen",
+  chromatic: {
+    // Detect any visual differences, no matter how small
+    // https://www.chromatic.com/docs/threshold
+    diffThreshold: 0,
+    diffIncludeAntiAliasing: true,
+  },
 };

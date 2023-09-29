@@ -7,6 +7,8 @@ import { forwardRef, HTMLAttributes, PropsWithChildren } from "react";
 import { TransitionStatus } from "react-transition-group";
 import { makeStyles } from "tss-react/mui";
 
+import { APP_BAR_HEIGHT } from "@foxglove/studio-base/components/AppBar/constants";
+
 export const PANEL_ROOT_CLASS_NAME = "FoxglovePanelRoot-root";
 
 type PanelRootProps = {
@@ -16,9 +18,10 @@ type PanelRootProps = {
   hasFullscreenDescendant: boolean;
 } & HTMLAttributes<HTMLDivElement>;
 
-export const usePanelRootStyles = makeStyles<
-  Omit<PanelRootProps, "fullscreenState" | "selected">
->()((theme, props) => {
+const useStyles = makeStyles<Omit<PanelRootProps, "fullscreenState" | "selected">>()((
+  theme,
+  props,
+) => {
   const { palette, transitions } = theme;
   const { sourceRect, hasFullscreenDescendant } = props;
   const duration = transitions.duration.shorter;
@@ -67,7 +70,7 @@ export const usePanelRootStyles = makeStyles<
     entered: {
       borderWidth: 4,
       position: "fixed",
-      top: 0,
+      top: APP_BAR_HEIGHT, // offset by app bar height
       left: 0,
       right: 0,
       bottom: 77, // match PlaybackBar height
@@ -104,9 +107,9 @@ export const usePanelRootStyles = makeStyles<
 
 export const PanelRoot = forwardRef<HTMLDivElement, PropsWithChildren<PanelRootProps>>(
   function PanelRoot(props, ref): JSX.Element {
-    const { fullscreenState, selected, sourceRect, hasFullscreenDescendant, className, ...rest } =
+    const { className, fullscreenState, hasFullscreenDescendant, selected, sourceRect, ...rest } =
       props;
-    const { classes, cx } = usePanelRootStyles({ sourceRect, hasFullscreenDescendant });
+    const { classes, cx } = useStyles({ sourceRect, hasFullscreenDescendant });
 
     const classNames = cx(PANEL_ROOT_CLASS_NAME, className, classes.root, {
       [classes.entering]: fullscreenState === "entering",

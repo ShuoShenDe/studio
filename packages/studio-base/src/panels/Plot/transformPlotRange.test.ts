@@ -11,63 +11,31 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { derivative, applyToDatum, mathFunctions } from "./transformPlotRange";
+import { derivative } from "./datasets";
+import { applyToDatum, mathFunctions } from "./transformPlotRange";
+
+const ZERO_TIME = Object.freeze({ sec: 0, nsec: 0 });
 
 describe("transformPlotRange", () => {
   describe("derivative", () => {
     it("takes the derivative using the previous message", () => {
       const data = [
         {
-          x: 0,
-          y: 0,
-          value: 0,
-          path: "/some/topic.something",
-          constantName: undefined,
-        },
-        {
-          x: 1,
-          y: -1,
-          value: -1,
-          path: "/some/topic.something",
-          constantName: undefined,
-        },
-        {
-          x: 2,
-          y: -1.5,
-          value: -1.5,
-          path: "/some/topic.something",
-          constantName: undefined,
-        },
-        {
-          x: 3,
-          y: 5,
-          value: 5,
-          path: "/some/topic.something",
-          constantName: undefined,
+          x: new Float32Array([0, 1, 2, 3]),
+          y: new Float32Array([0, -1, -1.5, 5]),
+          value: [0, -1, -1.5, 5],
+          receiveTime: [ZERO_TIME, ZERO_TIME, ZERO_TIME, ZERO_TIME],
         },
       ];
 
       const newData = [
         {
-          x: 1,
-          y: -1,
-          value: -1,
-          path: "/some/topic.something.@derivative",
           constantName: undefined,
-        },
-        {
-          x: 2,
-          y: -0.5,
-          value: -0.5,
-          path: "/some/topic.something.@derivative",
-          constantName: undefined,
-        },
-        {
-          x: 3,
-          y: 6.5,
-          value: 6.5,
-          path: "/some/topic.something.@derivative",
-          constantName: undefined,
+          headerStamp: undefined,
+          x: new Float32Array([1, 2, 3]),
+          y: new Float32Array([-1, -0.5, 6.5]),
+          value: [-1, -0.5, 6.5],
+          receiveTime: [ZERO_TIME, ZERO_TIME, ZERO_TIME],
         },
       ];
       expect(derivative(data)).toEqual(newData);
@@ -78,17 +46,17 @@ describe("transformPlotRange", () => {
   describe("absoluteValue", () => {
     it("takes the absolute value of tooltips", () => {
       const datums = [
-        { x: 0, y: NaN, path: "foo" },
-        { x: 1, y: -1, path: "foo" },
-        { x: 2, y: 1.5, path: "foo" },
-        { x: 2, y: -1.5, path: "foo" },
+        { x: 0, y: NaN },
+        { x: 1, y: -1 },
+        { x: 2, y: 1.5 },
+        { x: 2, y: -1.5 },
       ];
 
       const expected = [
-        { x: 0, y: NaN, value: NaN, path: "foo.@abs" },
-        { x: 1, y: 1, value: 1, path: "foo.@abs" },
-        { x: 2, y: 1.5, value: 1.5, path: "foo.@abs" },
-        { x: 2, y: 1.5, value: 1.5, path: "foo.@abs" },
+        { x: 0, y: NaN, value: NaN },
+        { x: 1, y: 1, value: 1 },
+        { x: 2, y: 1.5, value: 1.5 },
+        { x: 2, y: 1.5, value: 1.5 },
       ];
 
       for (const [idx, datum] of datums.entries()) {
@@ -98,18 +66,16 @@ describe("transformPlotRange", () => {
   });
 
   it("rad2deg converts radians to degrees", () => {
-    expect(applyToDatum({ y: Math.PI, path: "foo" }, mathFunctions.rad2deg!)).toEqual({
+    expect(applyToDatum({ y: Math.PI }, mathFunctions.rad2deg!)).toEqual({
       y: 180,
       value: 180,
-      path: "foo.@rad2deg",
     });
   });
 
   it("deg2rad converts degrees to radians", () => {
-    expect(applyToDatum({ y: 180, path: "foo" }, mathFunctions.deg2rad!)).toEqual({
+    expect(applyToDatum({ y: 180 }, mathFunctions.deg2rad!)).toEqual({
       y: Math.PI,
       value: Math.PI,
-      path: "foo.@deg2rad",
     });
   });
 });

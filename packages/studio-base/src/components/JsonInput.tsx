@@ -14,11 +14,10 @@
 import ErrorIcon from "@mui/icons-material/Error";
 import { Typography } from "@mui/material";
 import CodeEditor from "@uiw/react-textarea-code-editor";
-import { isEqual } from "lodash";
+import * as _ from "lodash-es";
 import { makeStyles } from "tss-react/mui";
 
 import Stack from "@foxglove/studio-base/components/Stack";
-import { fonts } from "@foxglove/studio-base/util/sharedStyleConstants";
 import { validationErrorToString, ValidationResult } from "@foxglove/studio-base/util/validators";
 
 const { useState, useCallback, useRef, useLayoutEffect, useEffect } = React;
@@ -27,7 +26,7 @@ const useStyles = makeStyles()((theme) => ({
   editor: {
     backgroundColor: "transparent !important",
     font: "inherit !important",
-    fontFamily: `${fonts.MONOSPACE} !important`,
+    fontFamily: `${theme.typography.fontMonospace} !important`,
     overflow: "auto",
   },
   error: {
@@ -43,13 +42,13 @@ type ParseAndStringifyFn = {
   stringify: (obj: unknown) => string;
   parse: (val: string) => unknown;
 };
-export type BaseProps = {
+type BaseProps = {
   dataTestId?: string;
   dataValidator?: (data: unknown) => ValidationResult | undefined;
   onChange?: OnChange;
   onError?: (err: string) => void;
   readOnly?: boolean;
-  maxHeight?: number;
+  maxHeight?: number | "auto" | "none";
   value: Value;
 };
 
@@ -115,7 +114,7 @@ function ValidatedInputBase({
    */
   useLayoutEffect(() => {
     if (!isEditing && value !== prevIncomingVal.current) {
-      if (isEqual(value, prevIncomingVal.current)) {
+      if (_.isEqual(value, prevIncomingVal.current)) {
         return;
       }
       let newVal = "";
@@ -177,7 +176,9 @@ function ValidatedInputBase({
         value={inputStr}
         onChange={handleChange}
         language="json"
-        onBlur={() => setIsEditing(false)}
+        onBlur={() => {
+          setIsEditing(false);
+        }}
         padding={12}
         style={{ maxHeight: maxHeight ?? 300 }}
       />
@@ -203,8 +204,8 @@ export default function JsonInput(props: BaseProps): JSX.Element {
   }
 
   return (
-    <Stack style={{ maxHeight: 800 }} overflowY="auto">
-      <ValidatedInputBase parse={JSON.parse} stringify={stringify} {...props} />
+    <Stack>
+      <ValidatedInputBase parse={JSON.parse} stringify={stringify} {...props} maxHeight="none" />
     </Stack>
   );
 }

@@ -12,7 +12,7 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { renderHook } from "@testing-library/react-hooks";
+import { renderHook } from "@testing-library/react";
 
 import MockMessagePipelineProvider from "@foxglove/studio-base/components/MessagePipeline/MockMessagePipelineProvider";
 import { MessageEvent } from "@foxglove/studio-base/players/types";
@@ -34,8 +34,22 @@ describe("useMessagesByTopic", () => {
     expect(result.current).toEqual({ "/foo": [] });
   });
 
+  it("accepts SubscribePayloads", async () => {
+    const { result } = renderHook(
+      ({ topics, historySize }) => PanelAPI.useMessagesByTopic({ topics, historySize }),
+      {
+        initialProps: { topics: [{ topic: "/foo", fields: ["a"] }], historySize: 1 },
+        wrapper: ({ children }) => (
+          <MockMessagePipelineProvider>{children}</MockMessagePipelineProvider>
+        ),
+      },
+    );
+
+    expect(result.current).toEqual({ "/foo": [] });
+  });
+
   it("add messages to their respective arrays", () => {
-    const message1: MessageEvent<unknown> = {
+    const message1: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 1 },
@@ -43,7 +57,7 @@ describe("useMessagesByTopic", () => {
       sizeInBytes: 0,
     };
 
-    const message2: MessageEvent<unknown> = {
+    const message2: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },
@@ -68,7 +82,7 @@ describe("useMessagesByTopic", () => {
   });
 
   it("remembers messages when changing props (both topics and historySize)", () => {
-    const message1: MessageEvent<unknown> = {
+    const message1: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 1 },
@@ -76,7 +90,7 @@ describe("useMessagesByTopic", () => {
       sizeInBytes: 0,
     };
 
-    const message2: MessageEvent<unknown> = {
+    const message2: MessageEvent = {
       topic: "/foo",
       receiveTime: { sec: 0, nsec: 0 },
       message: { value: 2 },

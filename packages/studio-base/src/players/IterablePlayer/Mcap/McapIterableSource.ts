@@ -8,9 +8,9 @@ import Log from "@foxglove/log";
 import { loadDecompressHandlers } from "@foxglove/mcap-support";
 import { MessageEvent } from "@foxglove/studio-base/players/types";
 
-import { FileReadable } from "./FileReadable";
+import { BlobReadable } from "./BlobReadable";
 import { McapIndexedIterableSource } from "./McapIndexedIterableSource";
-import { McapStreamingIterableSource } from "./McapStreamingIterableSource";
+import { McapUnindexedIterableSource } from "./McapUnindexedIterableSource";
 import { RemoteFileReadable } from "./RemoteFileReadable";
 import {
   IIterableSource,
@@ -18,13 +18,16 @@ import {
   Initalization,
   MessageIteratorArgs,
   GetBackfillMessagesArgs,
-  IterableSourceInitializeArgs,
 } from "../IIterableSource";
 
 const log = Log.getLogger(__filename);
 
-type McapSource = { type: "file"; file: File } | { type: "url"; url: string };
+type McapSource = { type: "file"; file: Blob } | { type: "url"; url: string };
 
+/**
+ * Create a McapIndexedReader if it will be possible to do an indexed read. If the file is not
+ * indexed or is empty, returns undefined.
+ */
 async function tryCreateIndexedReader(readable: McapTypes.IReadable) {
   const decompressHandlers = await loadDecompressHandlers();
   try {
@@ -41,24 +44,29 @@ async function tryCreateIndexedReader(readable: McapTypes.IReadable) {
 }
 
 export class McapIterableSource implements IIterableSource {
-  private _source: McapSource;
-  private _sourceImpl: IIterableSource | undefined;
+  #source: McapSource;
+  #sourceImpl: IIterableSource | undefined;
 
   public constructor(source: McapSource) {
-    this._source = source;
+    this.#source = source;
   }
 
   public async initialize(): Promise<Initalization> {
-    const source = this._source;
+    const source = this.#source;
 
     switch (source.type) {
       case "file": {
-        const readable = new FileReadable(source.file);
+        // Ensure the file is readable before proceeding (will throw in the event of a permission
+        // error). Workaround for the fact that `file.stream().getReader()` returns a generic
+        // "network error" in the event of a permission error.
+        await source.file.slice(0, 1).arrayBuffer();
+
+        const readable = new BlobReadable(source.file);
         const reader = await tryCreateIndexedReader(readable);
         if (reader) {
-          this._sourceImpl = new McapIndexedIterableSource(reader);
+          this.#sourceImpl = new McapIndexedIterableSource(reader);
         } else {
-          this._sourceImpl = new McapStreamingIterableSource({
+          this.#sourceImpl = new McapUnindexedIterableSource({
             size: source.file.size,
             stream: source.file.stream(),
           });
@@ -70,7 +78,7 @@ export class McapIterableSource implements IIterableSource {
         await readable.open();
         const reader = await tryCreateIndexedReader(readable);
         if (reader) {
-          this._sourceImpl = new McapIndexedIterableSource(reader);
+          this.#sourceImpl = new McapIndexedIterableSource(reader);
         } else {
           const response = await fetch(source.url);
           if (!response.body) {
@@ -81,7 +89,7 @@ export class McapIterableSource implements IIterableSource {
             throw new Error(`Remote file is missing Content-Length header. <${source.url}>`);
           }
 
-          this._sourceImpl = new McapStreamingIterableSource({
+          this.#sourceImpl = new McapUnindexedIterableSource({
             size: parseInt(size),
             stream: response.body,
           });
@@ -90,36 +98,24 @@ export class McapIterableSource implements IIterableSource {
       }
     }
 
-    return await this._sourceImpl.initialize();
+    return await this.#sourceImpl.initialize();
   }
 
   public messageIterator(
     opt: MessageIteratorArgs,
   ): AsyncIterableIterator<Readonly<IteratorResult>> {
-    if (!this._sourceImpl) {
+    if (!this.#sourceImpl) {
       throw new Error("Invariant: uninitialized");
     }
 
-    return this._sourceImpl.messageIterator(opt);
+    return this.#sourceImpl.messageIterator(opt);
   }
 
-  public async getBackfillMessages(
-    args: GetBackfillMessagesArgs,
-  ): Promise<MessageEvent<unknown>[]> {
-    if (!this._sourceImpl) {
+  public async getBackfillMessages(args: GetBackfillMessagesArgs): Promise<MessageEvent[]> {
+    if (!this.#sourceImpl) {
       throw new Error("Invariant: uninitialized");
     }
 
-    return await this._sourceImpl.getBackfillMessages(args);
+    return await this.#sourceImpl.getBackfillMessages(args);
   }
-}
-
-export function initialize(args: IterableSourceInitializeArgs): McapIterableSource {
-  if (args.file) {
-    return new McapIterableSource({ type: "file", file: args.file });
-  } else if (args.url) {
-    return new McapIterableSource({ type: "url", url: args.url });
-  }
-
-  throw new Error("file or url required");
 }

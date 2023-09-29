@@ -11,8 +11,6 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import memoizeWeak from "memoize-weak";
-
 import { MessagePathStructureItem } from "@foxglove/studio-base/components/MessagePathSyntax/constants";
 import { isTypicalFilterName } from "@foxglove/studio-base/components/MessagePathSyntax/isTypicalFilterName";
 
@@ -27,19 +25,20 @@ const isObjectElement = (
   value: unknown,
   pathItem: string | number,
   structureItem: MessagePathStructureItem,
-): boolean =>
-  typeof pathItem === "string" &&
-  ((structureItem.structureType === "message" && typeof value === "object") ||
-    (structureItem.structureType === "primitive" && structureItem.primitiveType === "json"));
+): boolean => {
+  return (
+    typeof pathItem === "string" &&
+    structureItem.structureType === "message" &&
+    typeof value === "object"
+  );
+};
 
 const isArrayElement = (
   value: unknown,
   pathItem: string | number,
   structureItem: MessagePathStructureItem,
 ): boolean =>
-  typeof pathItem === "number" &&
-  ((structureItem.structureType === "array" && Array.isArray(value)) ||
-    (structureItem.structureType === "primitive" && structureItem.primitiveType === "json"));
+  typeof pathItem === "number" && structureItem.structureType === "array" && Array.isArray(value);
 
 // Given a root value (e.g. a message object), a root structureItem (e.g. a message definition),
 // and a key path to navigate down the value and strutureItem (e.g. ["items", 10, "speed"]), return
@@ -62,7 +61,7 @@ export function getValueActionForValue(
       structureItem =
         structureItem.structureType === "message" && typeof pathItem === "string"
           ? structureItem.nextByName[pathItem]
-          : { structureType: "primitive", primitiveType: "json", datatype: "" };
+          : undefined;
       value = (value as Record<string, unknown>)[pathItem];
       if (multiSlicePath.endsWith("[:]") && structureItem?.structureType === "primitive") {
         // We're just inside a message that is inside an array, so we might want to pivot on this new value.
@@ -78,19 +77,17 @@ export function getValueActionForValue(
       multiSlicePath += `.${pathItem}`;
     } else if (isArrayElement(value, pathItem, structureItem)) {
       value = (value as Record<string, unknown>)[pathItem];
-      structureItem =
-        structureItem.structureType === "array"
-          ? structureItem.next
-          : { structureType: "primitive", primitiveType: "json", datatype: "" };
+      structureItem = structureItem.structureType === "array" ? structureItem.next : undefined;
       multiSlicePath = `${singleSlicePath}[:]`;
 
       // Ideally show something like `/topic.object[:]{id=123}` for the singleSlicePath, but fall
       // back to `/topic.object[10]` if necessary.
       let typicalFilterName;
-      if (structureItem.structureType === "message") {
-        typicalFilterName = Object.keys(structureItem.nextByName).find((key) =>
-          isTypicalFilterName(key),
-        );
+      if (structureItem?.structureType === "message") {
+        typicalFilterName = Object.entries(structureItem.nextByName).find(
+          ([key, nextStructureItem]) =>
+            nextStructureItem.structureType === "primitive" && isTypicalFilterName(key),
+        )?.[0];
       }
       if (
         typeof value === "object" &&
@@ -127,41 +124,27 @@ export function getValueActionForValue(
 }
 
 // Given root structureItem (e.g. a message definition),
-// and a key path (comma-joined) to navigate down, return strutureItem for the field at that path
-// Using comma-joined path to allow memoization of this function
-export const getStructureItemForPath = memoizeWeak(
-  (
-    rootStructureItem: MessagePathStructureItem | undefined,
-    keyPathJoined: string,
-  ): MessagePathStructureItem | undefined => {
-    // split the path and parse into numbers and strings
-    const keyPath: (number | string)[] = [];
-    for (const part of keyPathJoined.split(",")) {
-      if (!isNaN(+part)) {
-        keyPath.push(+part);
-      } else {
-        keyPath.push(part);
-      }
+// and a key path to navigate down, return strutureItem for the field at that path
+export const getStructureItemForPath = (
+  rootStructureItem: MessagePathStructureItem | undefined,
+  keyPath: (number | string)[],
+): MessagePathStructureItem | undefined => {
+  let structureItem: MessagePathStructureItem | undefined = rootStructureItem;
+  // Walk down the keyPath, while updating `value` and `structureItem`
+  for (const pathItem of keyPath) {
+    if (structureItem == undefined) {
+      break;
+    } else if (structureItem.structureType === "message" && typeof pathItem === "string") {
+      structureItem = structureItem.nextByName[pathItem];
+    } else if (structureItem.structureType === "array" && typeof pathItem === "number") {
+      structureItem = structureItem.next;
+    } else if (structureItem.structureType === "primitive") {
+      // ROS has some primitives that contain nested data (time+duration). We currently don't
+      // support looking inside them.
+      return structureItem;
+    } else {
+      throw new Error(`Invalid structureType: ${structureItem.structureType} for value/pathItem.`);
     }
-    let structureItem: MessagePathStructureItem | undefined = rootStructureItem;
-    // Walk down the keyPath, while updating `value` and `structureItem`
-    for (const pathItem of keyPath) {
-      if (structureItem == undefined) {
-        break;
-      } else if (structureItem.structureType === "message" && typeof pathItem === "string") {
-        structureItem = structureItem.nextByName[pathItem];
-      } else if (structureItem.structureType === "array" && typeof pathItem === "number") {
-        structureItem = structureItem.next;
-      } else if (structureItem.structureType === "primitive") {
-        // ROS has some primitives that contain nested data (time+duration). We currently don't
-        // support looking inside them.
-        return structureItem;
-      } else {
-        throw new Error(
-          `Invalid structureType: ${structureItem.structureType} for value/pathItem.`,
-        );
-      }
-    }
-    return structureItem;
-  },
-);
+  }
+  return structureItem;
+};

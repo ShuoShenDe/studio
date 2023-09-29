@@ -3,6 +3,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import { MessageEvent } from "@foxglove/studio-base/players/types";
+import { isTypedArray } from "@foxglove/studio-base/types/isTypedArray";
 
 import { RosPath } from "./constants";
 import { filterMatches } from "./filterMatches";
@@ -11,7 +12,7 @@ import { filterMatches } from "./filterMatches";
  * Execute the given message path to extract item(s) from the message.
  */
 export function simpleGetMessagePathDataItems(
-  message: MessageEvent<unknown>,
+  message: MessageEvent,
   filledInPath: RosPath,
 ): unknown[] {
   // We don't care about messages that don't match the topic we're looking for.
@@ -32,7 +33,7 @@ export function simpleGetMessagePathDataItems(
     }
     switch (pathPart.type) {
       case "slice": {
-        if (!Array.isArray(value)) {
+        if (!Array.isArray(value) && !isTypedArray(value)) {
           return;
         }
         if (typeof pathPart.start === "object" || typeof pathPart.end === "object") {
@@ -48,12 +49,14 @@ export function simpleGetMessagePathDataItems(
         if (!filterMatches(pathPart, value)) {
           return undefined;
         }
-        return traverse(value, pathIndex + 1);
+        traverse(value, pathIndex + 1);
+        return;
       case "name":
         if (typeof value !== "object") {
           return undefined;
         }
-        return traverse((value as Record<string, unknown>)[pathPart.name], pathIndex + 1);
+        traverse((value as Record<string, unknown>)[pathPart.name], pathIndex + 1);
+        return;
     }
   }
   traverse(message.message, 0);

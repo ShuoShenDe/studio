@@ -14,17 +14,21 @@ ignorePatterns:
 plugins:
   - file-progress
   - tss-unused-classes
+  - "@foxglove/eslint-plugin-studio"
 
 extends:
   - plugin:@foxglove/base
   - plugin:@foxglove/react
   - plugin:@foxglove/jest
+  - plugin:storybook/recommended
+  - plugin:@foxglove/studio/all
 
 settings:
   import/internal-regex: "^@foxglove"
 
 rules:
   "@foxglove/license-header": error
+  "@foxglove/prefer-hash-private": error
 
   tss-unused-classes/unused-classes: error
 
@@ -65,19 +69,28 @@ rules:
   no-restricted-imports:
     - error
     - paths:
+        - name: "@emotion/styled"
+          importNames: [styled]
+          message: "@emotion/styled has performance implications. Use tss-react/mui instead."
+
         - name: "@mui/material"
           importNames: [styled]
           message: "@mui/styled has performance implications. Use tss-react/mui instead."
+
+        - name: "@mui/system"
+          importNames: [styled]
+          message: "@mui/styled has performance implications. Use tss-react/mui instead."
+
         - name: "@mui/material/styles/styled"
           message: "@mui/styled has performance implications. Use tss-react/mui instead."
-        - name: "@emotion/styled"
-          message: "@emotion/styled has performance implications. Use tss-react/mui instead."
 
-        - name: "lodash"
-          importNames: [get]
-          message: "Use optional chaining instead of lodash.get."
-        - name: "lodash/get"
-          message: "Use optional chaining instead of lodash.get."
+        - name: "@mui/material"
+          importNames: [Box]
+          message: "@mui/Box has performance implications. Use tss-react/mui instead."
+
+        - name: "@mui/system"
+          importNames: [Box]
+          message: "@mui/Box has performance implications. Use tss-react/mui instead."
 
   no-restricted-syntax:
     - error
@@ -97,6 +110,20 @@ rules:
         `// eslint-disable-next-line no-restricted-syntax`. For rationale, see:
         https://github.com/sindresorhus/meta/discussions/7"
 
+    - selector: "CallExpression[callee.name='setTimeout'][arguments.length<2]"
+      message: "`setTimeout()` must be invoked with at least two arguments."
+    - selector: "CallExpression[callee.name='setInterval'][arguments.length<2]"
+      message: "`setInterval()` must be invoked with at least two arguments."
+
+    - selector: "CallExpression[callee.object.name='Promise'][callee.property.name='race']"
+      message: >
+        Promise.race is banned
+          use `import { race } from "@foxglove/den/async"` instead
+
+        See:
+          https://github.com/nodejs/node/issues/17469#issuecomment-685216777
+          https://bugs.chromium.org/p/v8/issues/detail?id=9858"
+
   jest/expect-expect:
     [error, { assertFunctionNames: [expect*, sendNotification.expectCalledDuringTest] }]
 
@@ -115,15 +142,12 @@ overrides:
 
       "@typescript-eslint/no-inferrable-types": off # It's sometimes useful to explicitly name to guard against future changes
       "@typescript-eslint/no-empty-function": off
-      "@typescript-eslint/no-implied-eval": off # We need to use `new Function()`
 
       # These are related to `any` types, which we generally don't have except from imports
       "@typescript-eslint/no-unsafe-member-access": off
       "@typescript-eslint/no-unsafe-return": off
       "@typescript-eslint/no-unsafe-assignment": off
       "@typescript-eslint/no-unsafe-call": off
-
-      "@typescript-eslint/require-await": off # Async functions without await are used to satisfy interface requirements
 
       # These could theoretically be turned on (or merit investigation) but are currently noisy
       "@typescript-eslint/no-misused-promises": off # Often used with e.g. useCallback(async () => {})
@@ -132,6 +156,17 @@ overrides:
       "@typescript-eslint/prefer-regexp-exec": off
       "@typescript-eslint/no-unnecessary-condition": error
       "@typescript-eslint/unbound-method": [error, { ignoreStatic: true }]
+
+      # https://eslint.org/docs/latest/rules/no-loop-func
+      "no-loop-func": error
+
+      # unused vars must have `_` prefix, but `_` alone is not ignored (see @foxglove/studio/lodash-imports)
+      "@typescript-eslint/no-unused-vars":
+        - error
+        - vars: all
+          args: after-used
+          varsIgnorePattern: "^_."
+          argsIgnorePattern: "^_."
 
   - rules:
       "@typescript-eslint/no-explicit-any": off
@@ -144,51 +179,3 @@ overrides:
       react/forbid-component-props: off
     files:
       - "**/*.stories.tsx"
-
-  - rules:
-      no-restricted-imports: off
-    files:
-      # Ignore existing implementations of @mui/styled
-      - "web/src/VersionBanner.tsx"
-      - "packages/studio-base/src/components/DataSourceSidebar/DataSourceSidebar.tsx"
-      - "packages/studio-base/src/components/DataSourceSidebar/TopicList.tsx"
-      - "packages/studio-base/src/components/EmptyPanelLayout.tsx"
-      - "packages/studio-base/src/components/EmptyState.tsx"
-      - "packages/studio-base/src/components/ExpandingToolbar.tsx"
-      - "packages/studio-base/src/components/ExtensionDetails.tsx"
-      - "packages/studio-base/src/components/ExtensionsSettings/index.tsx"
-      - "packages/studio-base/src/components/LayoutBrowser/LayoutRow.tsx"
-      - "packages/studio-base/src/components/LayoutBrowser/SignInPrompt.tsx"
-      - "packages/studio-base/src/components/OpenDialog/OpenDialog.tsx"
-      - "packages/studio-base/src/components/OpenDialog/Start.tsx"
-      - "packages/studio-base/src/components/OpenDialog/View.tsx"
-      - "packages/studio-base/src/components/Panel.tsx"
-      - "packages/studio-base/src/components/PanelLayout.tsx"
-      - "packages/studio-base/src/components/PanelToolbar/ToolbarIconButton.tsx"
-      - "packages/studio-base/src/components/PanelToolbar/index.tsx"
-      - "packages/studio-base/src/components/PlaybackControls/PlaybackTimeDisplayMethod.tsx"
-      - "packages/studio-base/src/components/PlaybackControls/Slider.stories.tsx"
-      - "packages/studio-base/src/components/PlaybackSpeedControls.tsx"
-      - "packages/studio-base/src/components/SettingsTreeEditor/VisibilityToggle.tsx"
-      - "packages/studio-base/src/components/SettingsTreeEditor/inputs/ColorScalePicker.tsx"
-      - "packages/studio-base/src/components/SettingsTreeEditor/inputs/ColorSwatch.tsx"
-      - "packages/studio-base/src/components/ShareJsonModal.tsx"
-      - "packages/studio-base/src/components/TextHighlight.tsx"
-      - "packages/studio-base/src/panels/Image/components/Toolbar.tsx"
-      - "packages/studio-base/src/panels/Image/components/ZoomMenu.tsx"
-      - "packages/studio-base/src/panels/Image/ImageView.tsx"
-      - "packages/studio-base/src/panels/NodePlayground/BottomBar/DiagnosticsSection.tsx"
-      - "packages/studio-base/src/panels/NodePlayground/BottomBar/index.tsx"
-      - "packages/studio-base/src/panels/NodePlayground/Sidebar.tsx"
-      - "packages/studio-base/src/panels/NodePlayground/index.tsx"
-      - "packages/studio-base/src/panels/Plot/PathSettingsModal.tsx"
-      - "packages/studio-base/src/panels/Publish/index.tsx"
-      - "packages/studio-base/src/panels/RawMessages/DiffSpan.tsx"
-      - "packages/studio-base/src/panels/Tab/TabbedToolbar.tsx"
-      - "packages/studio-base/src/panels/Tab/ToolbarTab.tsx"
-      - "packages/studio-base/src/panels/Tab/index.tsx"
-      - "packages/studio-base/src/panels/Table/Table.tsx"
-      - "packages/studio-base/src/panels/Table/TableCell.tsx"
-      - "packages/studio-base/src/panels/diagnostics/DiagnosticStatus.tsx"
-      - "packages/studio-base/src/panels/diagnostics/DiagnosticSummary.tsx"
-      - "packages/studio-base/src/stories/storyHelpers.tsx"

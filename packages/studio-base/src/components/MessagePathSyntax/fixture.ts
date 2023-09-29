@@ -14,15 +14,14 @@
 import { MessageEvent } from "@foxglove/studio-base/players/types";
 import { Fixture } from "@foxglove/studio-base/stories/PanelSetup";
 import { RosDatatypes } from "@foxglove/studio-base/types/RosDatatypes";
-// ts-prune-ignore-next
+
 export const datatypes: RosDatatypes = new Map(
   Object.entries({
     "some/datatype": { definitions: [{ name: "index", type: "int32" }] },
   }),
 );
 
-// ts-prune-ignore-next
-export const messages = Object.freeze<MessageEvent<unknown>[]>([
+export const messages = Object.freeze<MessageEvent[]>([
   {
     topic: "/some/topic",
     receiveTime: { sec: 100, nsec: 0 },
@@ -46,7 +45,6 @@ export const messages = Object.freeze<MessageEvent<unknown>[]>([
   },
 ]);
 
-// ts-prune-ignore-next
 export const MessagePathInputStoryFixture: Fixture = {
   datatypes: new Map(
     Object.entries({
@@ -85,7 +83,6 @@ export const MessagePathInputStoryFixture: Fixture = {
       "msgs/Log": {
         definitions: [
           { name: "id", type: "int32", isArray: false },
-          { name: "myJson", type: "json", isArray: false },
           { name: "severity", type: "float32", isArray: false },
         ],
       },

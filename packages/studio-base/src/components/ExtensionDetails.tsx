@@ -3,22 +3,13 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import {
-  IconButton,
-  Button,
-  Link,
-  Tab,
-  Tabs,
-  Typography,
-  Divider,
-  styled as muiStyled,
-} from "@mui/material";
+import { Button, Link, Tab, Tabs, Typography, Divider } from "@mui/material";
 import { useSnackbar } from "notistack";
 import { useCallback, useState } from "react";
 import { useAsync, useMountedState } from "react-use";
-import { DeepReadonly } from "ts-essentials";
+import { makeStyles } from "tss-react/mui";
 
-import { SidebarContent } from "@foxglove/studio-base/components/SidebarContent";
+import { Immutable } from "@foxglove/studio";
 import Stack from "@foxglove/studio-base/components/Stack";
 import TextContent from "@foxglove/studio-base/components/TextContent";
 import { useAnalytics } from "@foxglove/studio-base/context/AnalyticsContext";
@@ -32,13 +23,22 @@ import isDesktopApp from "@foxglove/studio-base/util/isDesktopApp";
 
 type Props = {
   installed: boolean;
-  extension: DeepReadonly<ExtensionMarketplaceDetail>;
+  extension: Immutable<ExtensionMarketplaceDetail>;
   onClose: () => void;
 };
 
-const StyledButton = muiStyled(Button)({ minWidth: 100 });
+const useStyles = makeStyles()((theme) => ({
+  backButton: {
+    marginLeft: theme.spacing(-1.5),
+    marginBottom: theme.spacing(1),
+  },
+  installButton: {
+    minWidth: 100,
+  },
+}));
 
 export function ExtensionDetails({ extension, onClose, installed }: Props): React.ReactElement {
+  const { classes } = useStyles();
   const [isInstalled, setIsInstalled] = useState(installed);
   const [activeTab, setActiveTab] = useState<number>(0);
   const isMounted = useMountedState();
@@ -106,18 +106,31 @@ export function ExtensionDetails({ extension, onClose, installed }: Props): Reac
   }, [analytics, extension.id, extension.namespace, isMounted, uninstallExtension]);
 
   return (
-    <SidebarContent
-      title={extension.name}
-      leadingItems={[
-        <IconButton key="back-arrow" onClick={onClose} size="small" edge="start">
-          <ChevronLeftIcon />
-        </IconButton>,
-      ]}
-    >
+    <Stack fullHeight flex="auto" gap={1}>
+      <div>
+        <Button
+          className={classes.backButton}
+          onClick={onClose}
+          size="small"
+          startIcon={<ChevronLeftIcon />}
+        >
+          Back
+        </Button>
+        <Typography variant="h3" fontWeight={500}>
+          {extension.name}
+        </Typography>
+      </div>
+
       <Stack gap={1} alignItems="flex-start">
         <Stack gap={0.5} paddingBottom={1}>
           <Stack direction="row" gap={1} alignItems="baseline">
-            <Link variant="body2" color="primary" href={extension.homepage} underline="hover">
+            <Link
+              variant="body2"
+              color="primary"
+              href={extension.homepage}
+              target="_blank"
+              underline="hover"
+            >
               {extension.id}
             </Link>
             <Typography
@@ -136,7 +149,8 @@ export function ExtensionDetails({ extension, onClose, installed }: Props): Reac
           </Typography>
         </Stack>
         {isInstalled && canUninstall ? (
-          <StyledButton
+          <Button
+            className={classes.installButton}
             size="small"
             key="uninstall"
             color="inherit"
@@ -144,10 +158,11 @@ export function ExtensionDetails({ extension, onClose, installed }: Props): Reac
             onClick={uninstall}
           >
             Uninstall
-          </StyledButton>
+          </Button>
         ) : (
           canInstall && (
-            <StyledButton
+            <Button
+              className={classes.installButton}
               size="small"
               key="install"
               color="inherit"
@@ -155,7 +170,7 @@ export function ExtensionDetails({ extension, onClose, installed }: Props): Reac
               onClick={install}
             >
               Install
-            </StyledButton>
+            </Button>
           )
         )}
       </Stack>
@@ -164,7 +179,9 @@ export function ExtensionDetails({ extension, onClose, installed }: Props): Reac
         <Tabs
           textColor="inherit"
           value={activeTab}
-          onChange={(_event, newValue: number) => setActiveTab(newValue)}
+          onChange={(_event, newValue: number) => {
+            setActiveTab(newValue);
+          }}
         >
           <Tab disableRipple label="README" value={0} />
           <Tab disableRipple label="CHANGELOG" value={1} />
@@ -176,6 +193,6 @@ export function ExtensionDetails({ extension, onClose, installed }: Props): Reac
         {activeTab === 0 && <TextContent>{readmeContent}</TextContent>}
         {activeTab === 1 && <TextContent>{changelogContent}</TextContent>}
       </Stack>
-    </SidebarContent>
+    </Stack>
   );
 }

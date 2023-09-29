@@ -75,6 +75,36 @@ describe("getValueActionForValue", () => {
     });
   });
 
+  it("does not crash with bigints nested inside arrays under isTypicalFilterName key (id)", () => {
+    const structureItem: MessagePathStructureItem = {
+      structureType: "array",
+      next: {
+        structureType: "message",
+        nextByName: {
+          some_id: {
+            structureType: "message",
+            datatype: "",
+            nextByName: {
+              x: {
+                structureType: "primitive",
+                primitiveType: "uint64",
+                datatype: "",
+              },
+            },
+          },
+        },
+        datatype: "",
+      },
+      datatype: "",
+    };
+    expect(
+      getValueActionForValue([{ some_id: { x: 18446744073709552000n } }], structureItem, [
+        0,
+        "some_id",
+      ]),
+    ).toEqual(undefined);
+  });
+
   it("returns paths with bigints inside object inside array", () => {
     const structureItem: MessagePathStructureItem = {
       structureType: "message",
@@ -196,66 +226,6 @@ describe("getValueActionForValue", () => {
     });
   });
 
-  it("returns value when looking inside a 'json' primitive", () => {
-    const structureItem: MessagePathStructureItem = {
-      structureType: "primitive",
-      primitiveType: "json",
-      datatype: "",
-    };
-    expect(getValueActionForValue({ abc: 0, def: 0 }, structureItem, ["abc"])).toEqual({
-      filterPath: "",
-      multiSlicePath: ".abc",
-      primitiveType: "json",
-      singleSlicePath: ".abc",
-    });
-  });
-
-  it("returns single/multi slice paths when pointing at a value inside an array, nested inside a JSON field", () => {
-    const structureItem: MessagePathStructureItem = {
-      structureType: "array",
-      next: {
-        structureType: "message",
-        nextByName: {
-          outer_key: { structureType: "primitive", primitiveType: "json", datatype: "" },
-        },
-        datatype: "",
-      },
-      datatype: "",
-    };
-    expect(
-      getValueActionForValue([{ outer_key: { nested_key: 456 } }], structureItem, [
-        0,
-        "outer_key",
-        "nested_key",
-      ]),
-    ).toEqual({
-      filterPath: "",
-      singleSlicePath: "[0].outer_key.nested_key",
-      multiSlicePath: "[:].outer_key.nested_key",
-      primitiveType: "json",
-    });
-  });
-
-  it("returns slice paths for json", () => {
-    const structureItem: MessagePathStructureItem = {
-      structureType: "message",
-      nextByName: {
-        some_id: {
-          structureType: "primitive",
-          primitiveType: "json",
-          datatype: "",
-        },
-      },
-      datatype: "",
-    };
-    expect(getValueActionForValue({ some_id: 123 }, structureItem, ["some_id"])).toEqual({
-      filterPath: "",
-      singleSlicePath: ".some_id",
-      multiSlicePath: ".some_id",
-      primitiveType: "json",
-    });
-  });
-
   it(`wraps string path filters with ""`, () => {
     const rootValue = {
       status: [
@@ -311,7 +281,7 @@ describe("getStructureItemForPath", () => {
       },
       datatype: "",
     };
-    expect(getStructureItemForPath(structureItem, "0")).toEqual({
+    expect(getStructureItemForPath(structureItem, [0])).toEqual({
       structureType: "primitive",
       primitiveType: "uint32",
       datatype: "",
@@ -330,7 +300,7 @@ describe("getStructureItemForPath", () => {
       },
       datatype: "",
     };
-    expect(getStructureItemForPath(structureItem, "some_id")).toEqual({
+    expect(getStructureItemForPath(structureItem, ["some_id"])).toEqual({
       structureType: "primitive",
       primitiveType: "uint32",
       datatype: "",
@@ -353,7 +323,26 @@ describe("getStructureItemForPath", () => {
       },
       datatype: "",
     };
-    expect(getStructureItemForPath(structureItem, "0,some_id")).toEqual({
+    expect(getStructureItemForPath(structureItem, [0, "some_id"])).toEqual({
+      structureType: "primitive",
+      primitiveType: "uint32",
+      datatype: "",
+    });
+  });
+
+  it("returns a key named '0'", () => {
+    const structureItem: MessagePathStructureItem = {
+      structureType: "message",
+      nextByName: {
+        0: {
+          structureType: "primitive",
+          primitiveType: "uint32",
+          datatype: "",
+        },
+      },
+      datatype: "",
+    };
+    expect(getStructureItemForPath(structureItem, ["0"])).toEqual({
       structureType: "primitive",
       primitiveType: "uint32",
       datatype: "",

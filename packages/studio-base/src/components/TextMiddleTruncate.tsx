@@ -11,14 +11,13 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { CSSProperties } from "react";
+import { CSSProperties, ClipboardEvent, useCallback } from "react";
 import { makeStyles } from "tss-react/mui";
 
 const DEFAULT_END_TEXT_LENGTH = 16;
 
 const useStyles = makeStyles()(() => ({
   root: {
-    alignSelf: "start",
     display: "flex",
     justifyContent: "flex-start",
     overflow: "hidden",
@@ -54,13 +53,29 @@ export default function TextMiddleTruncate({
   style,
 }: Props): JSX.Element {
   const { classes, cx } = useStyles();
-  const startTextLen = Math.max(
+  let startTextLen = Math.max(
     0,
     text.length -
       (endTextLength == undefined || endTextLength === 0 ? DEFAULT_END_TEXT_LENGTH : endTextLength),
   );
+  // Don't split at or immediately after whitespace.
+  while (startTextLen < text.length && text.charAt(startTextLen).match(/\s/)) {
+    startTextLen += 2;
+  }
   const startText = text.substring(0, startTextLen);
   const endText = text.substring(startTextLen);
+
+  // Copy the full text to the clipboard manually. Otherwise the browser will insert a
+  // newline into the copied text since it spans two DOM nodes.
+  const onCopy = useCallback(
+    (event: ClipboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const clipboardData = event.clipboardData;
+      clipboardData.setData("text/plain", text);
+    },
+    [text],
+  );
 
   if (!startText) {
     return (
@@ -76,6 +91,7 @@ export default function TextMiddleTruncate({
       className={cx(className, classes.root)}
       title={text}
       style={style}
+      onCopy={onCopy}
     >
       <div className={classes.start}>{startText}</div>
       <div className={classes.end}>{endText}</div>

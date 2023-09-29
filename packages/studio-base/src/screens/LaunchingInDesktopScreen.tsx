@@ -5,9 +5,9 @@
 import { Link, Typography } from "@mui/material";
 import { ReactElement, useEffect } from "react";
 
+import { useSessionStorageValue } from "@foxglove/hooks";
 import { AppSetting } from "@foxglove/studio-base/AppSetting";
 import Stack from "@foxglove/studio-base/components/Stack";
-import { useSessionStorageValue } from "@foxglove/studio-base/hooks/useSessionStorageValue";
 import { LaunchPreferenceValue } from "@foxglove/studio-base/types/LaunchPreferenceValue";
 
 export function LaunchingInDesktopScreen(): ReactElement {
@@ -83,7 +83,12 @@ export function LaunchingInDesktopScreen(): ReactElement {
           </Typography>
           <Typography align="center">
             Don’t have the app installed?&nbsp;
-            <Link color="primary" underline="hover" href="https://foxglove.dev/download">
+            <Link
+              color="primary"
+              underline="hover"
+              href="https://foxglove.dev/download"
+              target="_blank"
+            >
               Download Foxglove Studio
             </Link>
           </Typography>

@@ -2,6 +2,8 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import { StoryObj } from "@storybook/react";
+import { screen, userEvent } from "@storybook/testing-library";
 import { vec3 } from "gl-matrix";
 
 import type { PointCloud } from "@foxglove/schemas";
@@ -11,39 +13,89 @@ import PanelSetup from "@foxglove/studio-base/stories/PanelSetup";
 
 import { QUAT_IDENTITY, rad2deg, VEC3_ZERO } from "./common";
 import useDelayedFixture from "./useDelayedFixture";
-import ThreeDeeRender from "../index";
+import ThreeDeePanel from "../index";
 import { TransformStamped } from "../ros";
 
 export default {
   title: "panels/ThreeDeeRender",
-  component: ThreeDeeRender,
+  component: ThreeDeePanel,
   parameters: {
     colorScheme: "dark",
   },
 };
 
-export const Foxglove_PointCloud_RGBA = (): JSX.Element => <Foxglove_PointCloud />;
+export const Foxglove_PointCloud_RGBA_Settings: StoryObj = {
+  render: () => <Foxglove_PointCloud includeSettings />,
+  play: async () => {
+    await userEvent.click(await screen.findByTestId("settings__nodeHeaderToggle__general"));
+    await userEvent.click(
+      await screen.findByTestId("settings__nodeHeaderToggle__topics-/pointcloud"),
+    );
+  },
+};
+export const Foxglove_PointCloud_RGBA_SettingsChinese: StoryObj = {
+  ...Foxglove_PointCloud_RGBA_Settings,
+  parameters: { forceLanguage: "zh" },
+};
+export const Foxglove_PointCloud_RGBA_SettingsJapanese: StoryObj = {
+  ...Foxglove_PointCloud_RGBA_Settings,
+  parameters: { forceLanguage: "ja" },
+};
 
-export const Foxglove_PointCloud_RGBA_Square = (): JSX.Element => (
-  <Foxglove_PointCloud pointShape="square" />
-);
-export const Foxglove_PointCloud_Gradient = (): JSX.Element => (
-  <Foxglove_PointCloud colorMode="gradient" />
-);
-export const Foxglove_PointCloud_Gradient_Clamped = (): JSX.Element => (
-  <Foxglove_PointCloud colorMode="gradient" minValue={-2} maxValue={2} />
-);
+export const Foxglove_PointCloud_Gradient_Settings: StoryObj = {
+  render: () => <Foxglove_PointCloud colorMode="gradient" includeSettings />,
+  play: async () => {
+    await userEvent.click(await screen.findByTestId("settings__nodeHeaderToggle__general"));
+    await userEvent.click(
+      await screen.findByTestId("settings__nodeHeaderToggle__topics-/pointcloud"),
+    );
+  },
+};
+export const Foxglove_PointCloud_Gradient_SettingsChinese: StoryObj = {
+  ...Foxglove_PointCloud_Gradient_Settings,
+  parameters: { forceLanguage: "zh" },
+};
+export const Foxglove_PointCloud_Gradient_SettingsJapanese: StoryObj = {
+  ...Foxglove_PointCloud_Gradient_Settings,
+  parameters: { forceLanguage: "ja" },
+};
+
+export const Foxglove_PointCloud_RGBA: StoryObj = {
+  render: () => <Foxglove_PointCloud />,
+};
+
+export const Foxglove_PointCloud_RGBA_Square: StoryObj = {
+  render: () => <Foxglove_PointCloud pointShape="square" />,
+};
+
+export const Foxglove_PointCloud_Gradient: StoryObj = {
+  render: () => <Foxglove_PointCloud colorMode="gradient" />,
+};
+
+export const Foxglove_PointCloud_Gradient_Clamped: StoryObj = {
+  render: () => <Foxglove_PointCloud colorMode="gradient" minValue={-2} maxValue={2} />,
+};
+
+export const Foxglove_PointCloud_Stixels: StoryObj = {
+  render: () => <Foxglove_PointCloud colorMode="gradient" stixelsEnabled={true} />,
+};
 
 function Foxglove_PointCloud({
   pointShape = "circle",
   colorMode = "rgba-fields",
   minValue,
   maxValue,
+  stixelsEnabled = false,
+  debugPicking = false,
+  includeSettings = false,
 }: {
   pointShape?: "circle" | "square";
   colorMode?: "gradient" | "rgba-fields";
   minValue?: number;
   maxValue?: number;
+  stixelsEnabled?: boolean;
+  debugPicking?: boolean;
+  includeSettings?: boolean;
 }): JSX.Element {
   const topics: Topic[] = [
     { name: "/pointcloud", schemaName: "foxglove.PointCloud" },
@@ -144,8 +196,9 @@ function Foxglove_PointCloud({
   });
 
   return (
-    <PanelSetup fixture={fixture}>
-      <ThreeDeeRender
+    <PanelSetup fixture={fixture} includeSettings={includeSettings}>
+      <ThreeDeePanel
+        debugPicking={debugPicking}
         overrideConfig={{
           followTf: "base_link",
           topics: {
@@ -158,6 +211,7 @@ function Foxglove_PointCloud({
               gradient: ["#17b3f6", "#09e609d5"],
               minValue,
               maxValue,
+              stixelsEnabled,
             },
           },
           layers: {
@@ -327,7 +381,7 @@ function Foxglove_PointCloud_Intensity_Base({
 
   return (
     <PanelSetup fixture={fixture}>
-      <ThreeDeeRender
+      <ThreeDeePanel
         overrideConfig={{
           followTf: "base_link",
           topics: {
@@ -359,91 +413,226 @@ function Foxglove_PointCloud_Intensity_Base({
   );
 }
 
-export const Foxglove_PointCloud_Intensity = Foxglove_PointCloud_Intensity_Base.bind(undefined, {});
+export const Foxglove_PointCloud_Intensity: StoryObj = {
+  render: () => Foxglove_PointCloud_Intensity_Base({}),
+};
 
-export const Foxglove_PointCloud_Intensity_Clamped = Foxglove_PointCloud_Intensity_Base.bind(
-  undefined,
-  {
-    minValue: 80,
-    maxValue: 130,
-  },
-);
+export const Foxglove_PointCloud_Intensity_Clamped: StoryObj = {
+  render: () =>
+    Foxglove_PointCloud_Intensity_Base({
+      minValue: 80,
+      maxValue: 130,
+    }),
+};
 
-// Render a flat plane if we only have two dimensions
-export function Foxglove_PointCloud_TwoDimensions(): JSX.Element {
-  const topics: Topic[] = [{ name: "/pointcloud", schemaName: "foxglove.PointCloud" }];
+export const Foxglove_PointCloud_TwoDimensions: StoryObj = {
+  render: function Story() {
+    const topics: Topic[] = [{ name: "/pointcloud", schemaName: "foxglove.PointCloud" }];
 
-  const SCALE = 10 / 128;
+    const SCALE = 10 / 128;
 
-  function f(x: number, y: number) {
-    return (x / 128 - 0.5) ** 2 + (y / 128 - 0.5) ** 2;
-  }
-
-  const data = new Uint8Array(128 * 128 * 12);
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  for (let y = 0; y < 128; y++) {
-    for (let x = 0; x < 128; x++) {
-      const i = (y * 128 + x) * 12;
-      view.setFloat32(i + 0, x * SCALE - 5, true);
-      view.setFloat32(i + 4, y * SCALE - 5, true);
-      view.setFloat32(i + 8, f(x, y) * 5, true);
+    function f(x: number, y: number) {
+      return (x / 128 - 0.5) ** 2 + (y / 128 - 0.5) ** 2;
     }
+
+    const data = new Uint8Array(128 * 128 * 12);
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    for (let y = 0; y < 128; y++) {
+      for (let x = 0; x < 128; x++) {
+        const i = (y * 128 + x) * 12;
+        view.setFloat32(i + 0, x * SCALE - 5, true);
+        view.setFloat32(i + 4, y * SCALE - 5, true);
+        view.setFloat32(i + 8, f(x, y) * 5, true);
+      }
+    }
+
+    const pointCloud: MessageEvent<PointCloud> = {
+      topic: "/pointcloud",
+      receiveTime: { sec: 10, nsec: 0 },
+      message: {
+        timestamp: { sec: 0, nsec: 0 },
+        frame_id: "sensor",
+        point_stride: 12,
+        pose: { position: VEC3_ZERO, orientation: { x: 0.707, y: 0, z: 0, w: 0.707 } },
+        fields: [
+          { name: "x", offset: 0, type: 7 },
+          { name: "y", offset: 4, type: 7 },
+        ],
+        data,
+      },
+      schemaName: "foxglove.PointCloud",
+      sizeInBytes: 0,
+    };
+
+    const fixture = useDelayedFixture({
+      topics,
+      frame: {
+        "/pointcloud": [pointCloud],
+      },
+      capabilities: [],
+      activeData: {
+        currentTime: { sec: 0, nsec: 0 },
+      },
+    });
+
+    return (
+      <PanelSetup fixture={fixture}>
+        <ThreeDeePanel
+          overrideConfig={{
+            followTf: "sensor",
+            layers: {
+              grid: { layerId: "foxglove.Grid" },
+            },
+            cameraState: {
+              distance: 13.5,
+              perspective: true,
+              phi: rad2deg(1.22),
+              targetOffset: [0.25, -0.5, 0],
+              thetaOffset: rad2deg(-0.33),
+              fovy: rad2deg(0.75),
+              near: 0.01,
+              far: 5000,
+              target: [0, 0, 0],
+              targetOrientation: [0, 0, 0, 1],
+            },
+            topics: {
+              "/pointcloud": { visible: true },
+            },
+          }}
+        />
+      </PanelSetup>
+    );
+  },
+};
+
+function HistoryPickingStory(): JSX.Element {
+  const topics: Topic[] = [{ name: "/pointcloud", schemaName: "foxglove.PointCloud" }];
+  const point_stride = 12;
+  function makePointCloudData(t: number) {
+    const numPoints = 10;
+    const data = new Uint8Array(numPoints * point_stride);
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    let offset = 0;
+    for (let i = 0; i < numPoints; i++) {
+      view.setFloat32(offset + 0, i * 0.1 + t * 0.5, true);
+      view.setFloat32(offset + 4, 0.2 * Math.sin((2 * Math.PI * i) / numPoints) + t, true);
+      view.setFloat32(offset + 8, 0, true);
+      offset += point_stride;
+    }
+    return data;
   }
 
-  const pointCloud: MessageEvent<PointCloud> = {
+  const cloud1: MessageEvent<PointCloud> = {
     topic: "/pointcloud",
     receiveTime: { sec: 10, nsec: 0 },
     message: {
-      timestamp: { sec: 0, nsec: 0 },
+      timestamp: { sec: 10, nsec: 0 },
       frame_id: "sensor",
-      point_stride: 12,
-      pose: { position: VEC3_ZERO, orientation: { x: 0.707, y: 0, z: 0, w: 0.707 } },
+      pose: { position: VEC3_ZERO, orientation: QUAT_IDENTITY },
+      point_stride,
       fields: [
         { name: "x", offset: 0, type: 7 },
         { name: "y", offset: 4, type: 7 },
+        { name: "z", offset: 8, type: 7 },
       ],
-      data,
+      data: makePointCloudData(1),
     },
     schemaName: "foxglove.PointCloud",
     sizeInBytes: 0,
   };
 
+  const cloud2: MessageEvent<PointCloud> = {
+    ...cloud1,
+    receiveTime: { sec: 20, nsec: 0 },
+    message: {
+      ...cloud1.message,
+      timestamp: { sec: 20, nsec: 0 },
+      data: makePointCloudData(2),
+    },
+  };
+
   const fixture = useDelayedFixture({
     topics,
     frame: {
-      "/pointcloud": [pointCloud],
+      "/pointcloud": [cloud1, cloud2],
     },
     capabilities: [],
     activeData: {
-      currentTime: { sec: 0, nsec: 0 },
+      currentTime: { sec: 21, nsec: 0 },
     },
   });
 
   return (
-    <PanelSetup fixture={fixture}>
-      <ThreeDeeRender
-        overrideConfig={{
-          followTf: "sensor",
-          layers: {
-            grid: { layerId: "foxglove.Grid" },
-          },
-          cameraState: {
-            distance: 13.5,
-            perspective: true,
-            phi: rad2deg(1.22),
-            targetOffset: [0.25, -0.5, 0],
-            thetaOffset: rad2deg(-0.33),
-            fovy: rad2deg(0.75),
-            near: 0.01,
-            far: 5000,
-            target: [0, 0, 0],
-            targetOrientation: [0, 0, 0, 1],
-          },
-          topics: {
-            "/pointcloud": { visible: true },
-          },
-        }}
-      />
-    </PanelSetup>
+    <div style={{ width: 600, height: 400, flexShrink: 0 }}>
+      <PanelSetup fixture={fixture}>
+        <ThreeDeePanel
+          debugPicking
+          overrideConfig={{
+            followTf: "sensor",
+            topics: {
+              "/pointcloud": {
+                visible: true,
+                pointSize: 20,
+                pointShape: "circle",
+                colorMode: "gradient",
+                colorField: "x",
+                gradient: ["#17b3f6", "#09e609d5"],
+                decayTime: 20,
+              },
+            },
+            cameraState: {
+              distance: 4,
+              perspective: false,
+              targetOffset: [2, 1, 0],
+              thetaOffset: 0,
+              fovy: rad2deg(0.75),
+              near: 0.01,
+              far: 5000,
+              target: [0, 0, 0],
+              targetOrientation: [0, 0, 0, 1],
+            },
+          }}
+        />
+      </PanelSetup>
+    </div>
   );
 }
+
+/** Click background to render overall hitmap */
+export const Foxglove_PointCloud_HistoryPicking: StoryObj = {
+  render: HistoryPickingStory,
+  async play() {
+    await userEvent.click(await screen.findByTestId("ExpandingToolbar-Inspect objects"));
+    await userEvent.pointer({
+      target: document.querySelector("canvas")!,
+      keys: "[MouseLeft]",
+      coords: { clientX: 0, clientY: 0 },
+    });
+  },
+};
+
+/** Click first cloud */
+export const Foxglove_PointCloud_HistoryPickingInstances1: StoryObj = {
+  render: HistoryPickingStory,
+  async play() {
+    await userEvent.click(await screen.findByTestId("ExpandingToolbar-Inspect objects"));
+    await userEvent.pointer({
+      target: document.querySelector("canvas")!,
+      keys: "[MouseLeft]",
+      coords: { clientX: 173, clientY: 206 },
+    });
+  },
+};
+
+/** Click second cloud */
+export const Foxglove_PointCloud_HistoryPickingInstances2: StoryObj = {
+  render: HistoryPickingStory,
+  async play() {
+    await userEvent.click(await screen.findByTestId("ExpandingToolbar-Inspect objects"));
+    await userEvent.pointer({
+      target: document.querySelector("canvas")!,
+      keys: "[MouseLeft]",
+      coords: { clientX: 255, clientY: 123 },
+    });
+  },
+};

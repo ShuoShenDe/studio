@@ -11,12 +11,20 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import ArrowLeftRightIcon from "@mdi/svg/svg/arrow-left-right.svg";
-import ArrowUpDownIcon from "@mdi/svg/svg/arrow-up-down.svg";
-import FitToPageIcon from "@mdi/svg/svg/fit-to-page-outline.svg";
-import ServiceIcon from "@mdi/svg/svg/rectangle-outline.svg";
-import TopicIcon from "@mdi/svg/svg/rhombus.svg";
-import { FormControlLabel, IconButton, Paper, Radio, RadioGroup } from "@mui/material";
+import {
+  ArrowBidirectionalUpDown20Regular,
+  PageFit20Regular,
+  Diamond20Filled,
+  RectangleLandscape20Regular,
+} from "@fluentui/react-icons";
+import {
+  FormControlLabel,
+  IconButton,
+  Paper,
+  Radio,
+  RadioGroup,
+  iconButtonClasses,
+} from "@mui/material";
 import Cytoscape from "cytoscape";
 import { useCallback, useMemo, useRef, useState } from "react";
 import textMetrics from "text-metrics";
@@ -29,7 +37,6 @@ import Panel from "@foxglove/studio-base/components/Panel";
 import PanelToolbar, {
   PANEL_TOOLBAR_MIN_HEIGHT,
 } from "@foxglove/studio-base/components/PanelToolbar";
-import Stack from "@foxglove/studio-base/components/Stack";
 
 import Graph, { GraphMutation } from "./Graph";
 
@@ -115,8 +122,12 @@ const useStyles = makeStyles()((theme) => ({
     // allow mouse events to pass through the empty space in this container element
     pointerEvents: "none",
   },
-  stack: {
-    "& > .MuiIconButton-root": {
+  paper: {
+    display: "flex",
+    flexDirection: "column",
+    pointerEvents: "auto",
+
+    [`.${iconButtonClasses.root}`]: {
       "&:not(:first-of-type)": {
         borderTopRightRadius: 0,
         borderTopLeftRadius: 0,
@@ -126,16 +137,6 @@ const useStyles = makeStyles()((theme) => ({
         borderBottomLeftRadius: 0,
       },
     },
-  },
-  icon: {
-    fontSize: "1rem !important",
-
-    "& svg:not(.MuiSvgIcon-root)": {
-      fontSize: "1rem !important",
-    },
-  },
-  pointerEventsAuto: {
-    pointerEvents: "auto",
   },
   toolbarContent: {
     padding: theme.spacing(1),
@@ -161,7 +162,7 @@ const topicVisibilityToLabelMap: Record<TopicVisibility, string> = {
   "disconnected-sub": "Disconnected subscribed topics",
 };
 
-function unionInto<T>(dest: Set<T>, ...iterables: Set<T>[]): void {
+function unionInto<T>(dest: Set<T>, ...iterables: ReadonlySet<T>[]): void {
   for (const iterable of iterables) {
     for (const item of iterable) {
       dest.add(item);
@@ -170,7 +171,7 @@ function unionInto<T>(dest: Set<T>, ...iterables: Set<T>[]): void {
 }
 
 function TopicGraph() {
-  const { classes, cx } = useStyles();
+  const { classes } = useStyles();
   const [selectedTab, setSelectedTab] = useState<"Topics" | undefined>(undefined);
 
   const publishedTopics = useMessagePipeline(
@@ -378,30 +379,30 @@ function TopicGraph() {
     <>
       <PanelToolbar />
       <div className={classes.root}>
-        <Paper square={false} elevation={4} className={classes.pointerEventsAuto}>
-          <Stack flex="0 0" className={cx(classes.stack, classes.pointerEventsAuto)}>
-            <IconButton title="Zoom fit" onClick={onZoomFit} className={classes.icon}>
-              <FitToPageIcon />
-            </IconButton>
-            <IconButton title="Orientation" onClick={toggleOrientation} className={classes.icon}>
-              {lrOrientation ? <ArrowLeftRightIcon /> : <ArrowUpDownIcon />}
-            </IconButton>
-            <IconButton
-              color={showServices ? "info" : "inherit"}
-              className={classes.icon}
-              title={showServices ? "Showing services" : "Hiding services"}
-              onClick={toggleShowServices}
-            >
-              <ServiceIcon />
-            </IconButton>
-          </Stack>
+        <Paper square={false} elevation={4} className={classes.paper}>
+          <IconButton size="small" title="Zoom fit" onClick={onZoomFit}>
+            <PageFit20Regular />
+          </IconButton>
+          <IconButton size="small" title="Orientation" onClick={toggleOrientation}>
+            <ArrowBidirectionalUpDown20Regular
+              style={{ transform: `rotate(${lrOrientation ? 90 : 0}deg)` }}
+            />
+          </IconButton>
+          <IconButton
+            size="small"
+            color={showServices ? "info" : "inherit"}
+            title={showServices ? "Showing services" : "Hiding services"}
+            onClick={toggleShowServices}
+          >
+            <RectangleLandscape20Regular />
+          </IconButton>
         </Paper>
 
         <ExpandingToolbar
           checked={topicVisibility !== "none"}
           dataTest="set-topic-visibility"
           tooltip={topicVisibilityTooltip}
-          icon={<TopicIcon />}
+          icon={<Diamond20Filled />}
           selectedTab={selectedTab}
           onSelectTab={(newSelectedTab) => {
             setSelectedTab(newSelectedTab);

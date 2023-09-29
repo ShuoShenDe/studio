@@ -24,7 +24,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { isEqual, isObject, union } from "lodash";
+import * as _ from "lodash-es";
 import { ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { makeStyles } from "tss-react/mui";
 import { useDebouncedCallback } from "use-debounce";
@@ -43,7 +43,7 @@ import Stack from "@foxglove/studio-base/components/Stack";
 import { PlayerCapabilities } from "@foxglove/studio-base/players/types";
 
 // The minimum amount of time to wait between showing the parameter update animation again
-export const ANIMATION_RESET_DELAY_MS = 3000;
+const ANIMATION_RESET_DELAY_MS = 3000;
 
 function isActiveElementEditable(): boolean {
   const activeEl = document.activeElement;
@@ -87,13 +87,17 @@ const useStyles = makeStyles<void, "copyIcon">()((_theme, _params, classes) => (
  * Converts a parameter value into a value that can be edited in the JsonInput. Wraps
  * any value JsonInput can't handle in JSON.stringify.
  */
-function editableValue(value: unknown): string | number | boolean | unknown[] | object {
-  if (
+function editableValue(
+  value: unknown,
+): string | number | boolean | unknown[] | Uint8Array | object {
+  if (value instanceof Uint8Array) {
+    return Array.from(value);
+  } else if (
     typeof value === "string" ||
     typeof value === "number" ||
     typeof value === "boolean" ||
     Array.isArray(value) ||
-    isObject(value)
+    _.isObject(value)
   ) {
     return value;
   } else {
@@ -111,6 +115,8 @@ function displayableValue(value: unknown): string {
 
   if (value instanceof Date) {
     return value.toISOString();
+  } else if (value instanceof Uint8Array) {
+    return JSON.stringify(Array.from(value)) ?? "";
   }
 
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
@@ -134,14 +140,27 @@ function SubmittableJsonInput(props: {
           setValue(newVal);
         }}
       />
-      {!isEqual(value, props.value) && [
+      {!_.isEqual(editableValue(value), editableValue(props.value)) && [
         <Tooltip key="submit" title="Submit change">
-          <IconButton onClick={() => props.onSubmit(value)}>
+          <IconButton
+            onClick={() => {
+              if (props.value instanceof Uint8Array) {
+                props.onSubmit(new Uint8Array(value as number[]));
+              } else {
+                props.onSubmit(value);
+              }
+            }}
+          >
             <CheckIcon />
           </IconButton>
         </Tooltip>,
         <Tooltip key="reset" title="Reset">
-          <IconButton key="reset" onClick={() => setValue(editableValue(props.value))}>
+          <IconButton
+            key="reset"
+            onClick={() => {
+              setValue(editableValue(props.value));
+            }}
+          >
             <ClearIcon />
           </IconButton>
         </Tooltip>,
@@ -159,7 +178,9 @@ function Parameters(): ReactElement {
 
   const setParameter = useDebouncedCallback(
     useCallback(
-      (name: string, value: ParameterValue) => setParameterUnbounced(name, value),
+      (name: string, value: ParameterValue) => {
+        setParameterUnbounced(name, value);
+      },
       [setParameterUnbounced],
     ),
     500,
@@ -174,11 +195,13 @@ function Parameters(): ReactElement {
 
   // Don't run the animation when the Table first renders
   const skipAnimation = useRef<boolean>(true);
-  const previousParametersRef = useRef<Map<string, unknown> | undefined>(parameters);
+  const previousParametersRef = useRef<ReadonlyMap<string, unknown> | undefined>(parameters);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => (skipAnimation.current = false), ANIMATION_RESET_DELAY_MS);
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   useEffect(() => {
@@ -186,18 +209,22 @@ function Parameters(): ReactElement {
       previousParametersRef.current = parameters;
       return;
     }
-    const newChangedParameters = union(
+    const newChangedParameters = _.union(
       Array.from(parameters.keys()),
       Array.from(previousParametersRef.current?.keys() ?? []),
     ).filter((name) => {
       const previousValue = previousParametersRef.current?.get(name);
-      return !isEqual(previousValue, parameters.get(name));
+      return !_.isEqual(previousValue, parameters.get(name));
     });
 
     setChangedParameters(newChangedParameters);
     previousParametersRef.current = parameters;
-    const timerId = setTimeout(() => setChangedParameters([]), ANIMATION_RESET_DELAY_MS);
-    return () => clearTimeout(timerId);
+    const timerId = setTimeout(() => {
+      setChangedParameters([]);
+    }, ANIMATION_RESET_DELAY_MS);
+    return () => {
+      clearTimeout(timerId);
+    };
   }, [parameters, skipAnimation]);
 
   if (!canGetParams) {

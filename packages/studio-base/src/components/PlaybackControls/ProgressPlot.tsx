@@ -4,18 +4,20 @@
 
 import { keyframes } from "@emotion/react";
 import { simplify } from "intervals-fn";
+import * as _ from "lodash-es";
 import { useMemo } from "react";
 import tinycolor from "tinycolor2";
 import { makeStyles } from "tss-react/mui";
 
 import { filterMap } from "@foxglove/den/collection";
+import { Immutable } from "@foxglove/studio";
 import Stack from "@foxglove/studio-base/components/Stack";
 import { Range } from "@foxglove/studio-base/util/ranges";
 
-type ProgressProps = {
+type ProgressProps = Immutable<{
   loading: boolean;
   availableRanges?: Range[];
-};
+}>;
 
 const STRIPE_WIDTH = 8;
 
@@ -56,11 +58,22 @@ export function ProgressPlot(props: ProgressProps): JSX.Element {
   const { availableRanges, loading } = props;
   const { classes } = useStyles();
 
-  const ranges = useMemo(() => {
+  const clampedRanges = useMemo(() => {
     if (!availableRanges) {
+      return undefined;
+    }
+
+    return availableRanges.map((range) => ({
+      start: _.clamp(range.start, 0, 1),
+      end: _.clamp(range.end, 0, 1),
+    }));
+  }, [availableRanges]);
+
+  const ranges = useMemo(() => {
+    if (!clampedRanges) {
       return <></>;
     }
-    const mergedRanges = simplify(availableRanges);
+    const mergedRanges = simplify(clampedRanges);
 
     return filterMap(mergedRanges, (range, idx) => {
       const width = range.end - range.start;
@@ -79,7 +92,7 @@ export function ProgressPlot(props: ProgressProps): JSX.Element {
         />
       );
     });
-  }, [availableRanges, classes.range]);
+  }, [clampedRanges, classes.range]);
 
   return (
     <Stack position="relative" fullHeight>

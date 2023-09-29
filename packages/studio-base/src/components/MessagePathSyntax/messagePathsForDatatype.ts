@@ -11,9 +11,9 @@
 //   found at http://www.apache.org/licenses/LICENSE-2.0
 //   You may not use this file except in compliance with the License.
 
-import { memoize } from "lodash";
-import memoizeWeak from "memoize-weak";
+import * as _ from "lodash-es";
 
+import { Immutable } from "@foxglove/studio";
 import { MessagePathFilter } from "@foxglove/studio-base/components/MessagePathSyntax/constants";
 import { isTypicalFilterName } from "@foxglove/studio-base/components/MessagePathSyntax/isTypicalFilterName";
 import { quoteFieldNameIfNeeded } from "@foxglove/studio-base/components/MessagePathSyntax/parseRosPath";
@@ -72,17 +72,10 @@ function structureItemIsIntegerPrimitive(item: MessagePathStructureItem) {
 //     }
 //   }
 // }
-let lastDatatypes: RosDatatypes | undefined;
-let lastStructures: Record<string, MessagePathStructureItemMessage> | undefined;
 export function messagePathStructures(
-  datatypes: RosDatatypes,
+  datatypes: Immutable<RosDatatypes>,
 ): Record<string, MessagePathStructureItemMessage> {
-  if (lastDatatypes === datatypes && lastStructures) {
-    return lastStructures;
-  }
-
-  lastDatatypes = undefined;
-  const structureFor = memoize(
+  const structureFor = _.memoize(
     (datatype: string, seenDatatypes: string[]): MessagePathStructureItemMessage => {
       const nextByName: Record<string, MessagePathStructureItem> = {};
       const rosDatatype = datatypes.get(datatype);
@@ -110,13 +103,13 @@ export function messagePathStructures(
 
         throw new Error(`datatype not found: "${datatype}"`);
       }
-      rosDatatype.definitions.forEach((msgField) => {
+      for (const msgField of rosDatatype.definitions) {
         if (msgField.isConstant === true) {
-          return;
+          continue;
         }
 
         if (seenDatatypes.includes(msgField.type)) {
-          return;
+          continue;
         }
 
         const next: MessagePathStructureItem = isRosPrimitive(msgField.type)
@@ -132,17 +125,16 @@ export function messagePathStructures(
         } else {
           nextByName[msgField.name] = next;
         }
-      });
+      }
       return { structureType: "message", nextByName, datatype };
     },
   );
 
-  lastStructures = {};
+  const structures: Record<string, MessagePathStructureItemMessage> = {};
   for (const [datatype] of datatypes) {
-    lastStructures[datatype] = structureFor(datatype, []);
+    structures[datatype] = structureFor(datatype, []);
   }
-  lastDatatypes = datatypes; // Set at the very end, in case there's an error earlier.
-  return lastStructures;
+  return structures;
 }
 
 export function validTerminatingStructureItem(
@@ -160,10 +152,9 @@ export function validTerminatingStructureItem(
 }
 
 // Given a datatype, the array of datatypes, and a list of valid types,
-// list out all valid strings for the `messagePath` part of the path (sorted).
-export function messagePathsForDatatype(
-  datatype: string,
-  datatypes: RosDatatypes,
+// list out all valid strings for a MessagePathStructure.
+export function messagePathsForStructure(
+  structure: MessagePathStructureItemMessage,
   {
     validTypes,
     noMultiSlices,
@@ -232,10 +223,8 @@ export function messagePathsForDatatype(
       }
     }
   }
-  const structureItem = messagePathStructures(datatypes)[datatype];
-  if (structureItem != undefined) {
-    traverse(structureItem, "");
-  }
+
+  traverse(structure, "");
   return messagePaths.sort(naturalSort());
 }
 
@@ -253,69 +242,54 @@ export type StructureTraversalResult = {
 //
 // We use memoizeWeak because it works with multiple arguments (lodash's memoize
 // does not) and does not hold onto objects as strongly (it uses WeakMap).
-export const traverseStructure = memoizeWeak(
-  (
-    initialStructureItem: MessagePathStructureItem | undefined,
-    messagePath: MessagePathPart[],
-  ): StructureTraversalResult => {
-    let structureItem = initialStructureItem;
+export const traverseStructure = (
+  initialStructureItem: MessagePathStructureItem | undefined,
+  messagePath: MessagePathPart[],
+): StructureTraversalResult => {
+  let structureItem = initialStructureItem;
+  if (!structureItem) {
+    return { valid: false, msgPathPart: undefined, structureItem: undefined };
+  }
+  for (const msgPathPart of messagePath) {
     if (!structureItem) {
-      return { valid: false, msgPathPart: undefined, structureItem: undefined };
+      return { valid: false, msgPathPart, structureItem };
     }
-    for (const msgPathPart of messagePath) {
-      if (!structureItem) {
+    if (msgPathPart.type === "name") {
+      if (structureItem.structureType !== "message") {
         return { valid: false, msgPathPart, structureItem };
       }
-      if ("primitiveType" in structureItem && structureItem.primitiveType === "json") {
-        // No need to continue validating if we're dealing with JSON. We
-        // essentially treat all nested values as valid.
-        continue;
-      } else if (msgPathPart.type === "name") {
-        if (structureItem.structureType !== "message") {
-          return { valid: false, msgPathPart, structureItem };
-        }
-        const next: MessagePathStructureItem | undefined =
-          structureItem.nextByName[msgPathPart.name];
-        const nextStructureIsJson: boolean =
-          next != undefined && next.structureType === "primitive" && next.primitiveType === "json";
-        structureItem = !nextStructureIsJson
-          ? next
-          : {
-              structureType: "primitive",
-              primitiveType: "json",
-              datatype: next ? next.datatype : "",
-            };
-      } else if (msgPathPart.type === "slice") {
-        if (structureItem.structureType !== "array") {
-          return { valid: false, msgPathPart, structureItem };
-        }
-        structureItem = structureItem.next;
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      } else if (msgPathPart.type === "filter") {
-        if (
-          structureItem.structureType !== "message" ||
-          msgPathPart.path.length === 0 ||
-          msgPathPart.value == undefined
-        ) {
-          return { valid: false, msgPathPart, structureItem };
-        }
-        let currentItem: MessagePathStructureItem | undefined = structureItem;
-        for (const name of msgPathPart.path) {
-          if (currentItem.structureType !== "message") {
-            return { valid: false, msgPathPart, structureItem };
-          }
-          currentItem = currentItem.nextByName[name];
-          if (currentItem == undefined) {
-            return { valid: false, msgPathPart, structureItem };
-          }
-        }
-      } else {
-        assertNever(
-          msgPathPart,
-          `Invalid msgPathPart.type: ${(msgPathPart as MessagePathPart).type}`,
-        );
+      const next: MessagePathStructureItem | undefined = structureItem.nextByName[msgPathPart.name];
+      structureItem = next;
+    } else if (msgPathPart.type === "slice") {
+      if (structureItem.structureType !== "array") {
+        return { valid: false, msgPathPart, structureItem };
       }
+      structureItem = structureItem.next;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    } else if (msgPathPart.type === "filter") {
+      if (
+        structureItem.structureType !== "message" ||
+        msgPathPart.path.length === 0 ||
+        msgPathPart.value == undefined
+      ) {
+        return { valid: false, msgPathPart, structureItem };
+      }
+      let currentItem: MessagePathStructureItem | undefined = structureItem;
+      for (const name of msgPathPart.path) {
+        if (currentItem.structureType !== "message") {
+          return { valid: false, msgPathPart, structureItem };
+        }
+        currentItem = currentItem.nextByName[name];
+        if (currentItem == undefined) {
+          return { valid: false, msgPathPart, structureItem };
+        }
+      }
+    } else {
+      assertNever(
+        msgPathPart,
+        `Invalid msgPathPart.type: ${(msgPathPart as MessagePathPart).type}`,
+      );
     }
-    return { valid: true, msgPathPart: undefined, structureItem };
-  },
-);
+  }
+  return { valid: true, msgPathPart: undefined, structureItem };
+};

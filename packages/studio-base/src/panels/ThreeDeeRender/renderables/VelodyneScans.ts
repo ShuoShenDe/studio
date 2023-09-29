@@ -2,14 +2,15 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import * as THREE from "three";
-
 import { toNanoSec, toSec } from "@foxglove/rostime";
 import { NumericType, PointCloud as FoxglovePointCloud } from "@foxglove/schemas";
 import { MessageEvent, SettingsTreeAction } from "@foxglove/studio";
-import { PointCloudRenderable } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/PointClouds";
+import {
+  createStixelMaterial,
+  PointCloudHistoryRenderable,
+} from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/PointClouds";
 import type { RosObject } from "@foxglove/studio-base/players/types";
-import { VelodynePacket, VelodyneScan } from "@foxglove/studio-base/types/Messages";
+import { VelodyneScan } from "@foxglove/studio-base/types/Messages";
 import {
   Calibration,
   Model,
@@ -21,27 +22,27 @@ import {
 
 import {
   autoSelectColorField,
-  createGeometry,
   createInstancePickingMaterial,
   createPickingMaterial,
-  createPoints,
   DEFAULT_POINT_SETTINGS,
   LayerSettingsPointExtension,
   pointSettingsNode,
   pointCloudMaterial,
   POINT_CLOUD_REQUIRED_FIELDS,
 } from "./pointExtensionUtils";
-import { Renderer } from "../Renderer";
+import type { AnyRendererSubscription, IRenderer } from "../IRenderer";
 import { SceneExtension } from "../SceneExtension";
 import { SettingsTreeEntry, SettingsTreeNodeWithActionHandler } from "../SettingsManager";
 import { VELODYNE_SCAN_DATATYPES } from "../ros";
 import { topicIsConvertibleToSchema } from "../topicIsConvertibleToSchema";
 import { makePose } from "../transforms";
 
-type LayerSettingsVelodyneScans = LayerSettingsPointExtension;
-const DEFAULT_SETTINGS = DEFAULT_POINT_SETTINGS;
+type LayerSettingsVelodyneScans = LayerSettingsPointExtension & {
+  stixelsEnabled: boolean;
+};
+const DEFAULT_SETTINGS = { ...DEFAULT_POINT_SETTINGS, stixelsEnabled: false };
 
-export function pointFieldDataTypeToNumericType(type: PointFieldDataType): NumericType {
+function pointFieldDataTypeToNumericType(type: PointFieldDataType): NumericType {
   switch (type) {
     case PointFieldDataType.UINT8:
       return NumericType.UINT8;
@@ -68,14 +69,14 @@ export function pointFieldDataTypeToNumericType(type: PointFieldDataType): Numer
 // objects which are an amalgamation of VelodyneScan and PointCloud2 ROS
 // messages plus marker-like SceneBuilder annotations
 class VelodyneCloudConverter {
-  private _transformers = new Map<Model, Transformer>();
+  #transformers = new Map<Model, Transformer>();
 
   public decode(scan: VelodyneScan): FoxglovePointCloud | undefined {
     if (scan.packets.length === 0) {
       return undefined;
     }
 
-    const firstPacketData = scan.packets[0] as VelodynePacket;
+    const firstPacketData = scan.packets[0]!;
     const model = RawPacket.InferModel(firstPacketData.data);
     if (model == undefined) {
       return undefined;
@@ -111,25 +112,34 @@ class VelodyneCloudConverter {
   }
 
   public getTransformer(model: Model): Transformer {
-    let transformer = this._transformers.get(model);
+    let transformer = this.#transformers.get(model);
     if (transformer != undefined) {
       return transformer;
     }
 
     transformer = new Transformer(new Calibration(model));
-    this._transformers.set(model, transformer);
+    this.#transformers.set(model, transformer);
     return transformer;
   }
 }
 
-export class VelodyneScans extends SceneExtension<PointCloudRenderable> {
-  private _pointCloudFieldsByTopic = new Map<string, string[]>();
-  private _velodyneCloudConverter = new VelodyneCloudConverter();
+export class VelodyneScans extends SceneExtension<PointCloudHistoryRenderable> {
+  public static extensionId = "foxglove.VelodyneScans";
+  #pointCloudFieldsByTopic = new Map<string, string[]>();
+  #velodyneCloudConverter = new VelodyneCloudConverter();
 
-  public constructor(renderer: Renderer) {
-    super("foxglove.VelodyneScans", renderer);
+  public constructor(renderer: IRenderer, name: string = VelodyneScans.extensionId) {
+    super(name, renderer);
+  }
 
-    renderer.addSchemaSubscriptions(VELODYNE_SCAN_DATATYPES, this.handleVelodyneScan);
+  public override getSubscriptions(): readonly AnyRendererSubscription[] {
+    return [
+      {
+        type: "schema",
+        schemaNames: VELODYNE_SCAN_DATATYPES,
+        subscription: { handler: this.#handleVelodyneScan },
+      },
+    ];
   }
 
   public override settingsNodes(): SettingsTreeEntry[] {
@@ -142,12 +152,17 @@ export class VelodyneScans extends SceneExtension<PointCloudRenderable> {
       }
       const config = (configTopics[topic.name] ?? {}) as Partial<LayerSettingsVelodyneScans>;
       const messageFields =
-        this._pointCloudFieldsByTopic.get(topic.name) ?? POINT_CLOUD_REQUIRED_FIELDS;
+        this.#pointCloudFieldsByTopic.get(topic.name) ?? POINT_CLOUD_REQUIRED_FIELDS;
       const node: SettingsTreeNodeWithActionHandler = pointSettingsNode(
         topic,
         messageFields,
         config,
       );
+      node.fields!.stixelsEnabled = {
+        label: "Stixel view",
+        input: "boolean",
+        value: config.stixelsEnabled ?? DEFAULT_SETTINGS.stixelsEnabled,
+      };
       node.handler = handler;
       node.icon = "Points";
       entries.push({ path: ["topics", topic.name], node });
@@ -172,8 +187,8 @@ export class VelodyneScans extends SceneExtension<PointCloudRenderable> {
         | undefined;
       const settings = { ...DEFAULT_SETTINGS, ...prevSettings };
       renderable.updatePointCloud(
-        renderable.userData.pointCloud,
-        renderable.userData.originalMessage,
+        renderable.userData.latestPointCloud,
+        renderable.userData.latestOriginalMessage,
         settings,
         renderable.userData.receiveTime,
       );
@@ -195,10 +210,10 @@ export class VelodyneScans extends SceneExtension<PointCloudRenderable> {
     }
   }
 
-  private handleVelodyneScan = (messageEvent: MessageEvent<VelodyneScan>): void => {
+  #handleVelodyneScan = (messageEvent: MessageEvent<VelodyneScan>): void => {
     const { topic } = messageEvent;
     const receiveTime = toNanoSec(messageEvent.receiveTime);
-    const pointCloud = this._velodyneCloudConverter.decode(messageEvent.message);
+    const pointCloud = this.#velodyneCloudConverter.decode(messageEvent.message);
     if (!pointCloud) {
       return;
     }
@@ -223,26 +238,13 @@ export class VelodyneScans extends SceneExtension<PointCloudRenderable> {
         });
       }
 
-      const isDecay = settings.decayTime > 0;
-      const geometry = createGeometry(
-        topic,
-        isDecay ? THREE.StaticDrawUsage : THREE.DynamicDrawUsage,
-      );
-
       const material = pointCloudMaterial(settings);
       const pickingMaterial = createPickingMaterial(settings);
       const instancePickingMaterial = createInstancePickingMaterial(settings);
-      const points = createPoints(
-        topic,
-        pointCloud.pose,
-        geometry,
-        material,
-        pickingMaterial,
-        instancePickingMaterial,
-      );
+      const stixelMaterial = createStixelMaterial(settings);
 
       const messageTime = toNanoSec(pointCloud.timestamp);
-      renderable = new PointCloudRenderable(topic, this.renderer, {
+      renderable = new PointCloudHistoryRenderable(topic, this.renderer, {
         receiveTime,
         messageTime,
         frameId: this.renderer.normalizeFrameId(pointCloud.frame_id),
@@ -250,24 +252,23 @@ export class VelodyneScans extends SceneExtension<PointCloudRenderable> {
         settingsPath: ["topics", topic],
         settings,
         topic,
-        pointCloud,
-        originalMessage: messageEvent.message as RosObject,
-        pointsHistory: [{ receiveTime, messageTime, points }],
+        latestPointCloud: pointCloud,
+        latestOriginalMessage: messageEvent.message as RosObject,
         material,
         pickingMaterial,
         instancePickingMaterial,
+        stixelMaterial,
       });
-      renderable.add(points);
 
       this.add(renderable);
       this.renderables.set(topic, renderable);
     }
 
     // Update the mapping of topic to point cloud field names if necessary
-    let fields = this._pointCloudFieldsByTopic.get(messageEvent.topic);
+    let fields = this.#pointCloudFieldsByTopic.get(messageEvent.topic);
     if (!fields || fields.length !== pointCloud.fields.length) {
       fields = pointCloud.fields.map((field) => field.name);
-      this._pointCloudFieldsByTopic.set(messageEvent.topic, fields);
+      this.#pointCloudFieldsByTopic.set(messageEvent.topic, fields);
       this.updateSettingsTree();
     }
 

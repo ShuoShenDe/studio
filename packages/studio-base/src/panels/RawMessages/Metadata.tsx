@@ -13,6 +13,7 @@
 
 import { Link, Typography } from "@mui/material";
 import { useCallback } from "react";
+import { useLatest } from "react-use";
 import { makeStyles } from "tss-react/mui";
 
 import CopyButton from "@foxglove/studio-base/components/CopyButton";
@@ -44,8 +45,8 @@ type Props = {
   diffData: unknown;
   diff: unknown;
   datatype?: string;
-  message: MessageEvent<unknown>;
-  diffMessage?: MessageEvent<unknown>;
+  message: MessageEvent;
+  diffMessage?: MessageEvent;
 };
 
 export default function Metadata({
@@ -57,15 +58,25 @@ export default function Metadata({
   diffMessage,
 }: Props): JSX.Element {
   const { classes } = useStyles();
+
+  // Access these by ref so that our callbacks aren't invalidated and CopyButton
+  // memoization is stable.
+  const latestData = useLatest(data);
+  const latestDiffData = useLatest(diffData);
+
   const docsLink = datatype ? getMessageDocumentationLink(datatype) : undefined;
-  const copyData = useCallback(() => JSON.stringify(data, copyMessageReplacer, 2) ?? "", [data]);
+  const copyData = useCallback(
+    () => JSON.stringify(latestData.current, copyMessageReplacer, 2) ?? "",
+    [latestData],
+  );
   const copyDiffData = useCallback(
-    () => JSON.stringify(diffData, copyMessageReplacer, 2) ?? "",
-    [diffData],
+    () => JSON.stringify(latestDiffData.current, copyMessageReplacer, 2) ?? "",
+    [latestDiffData],
   );
   const copyDiff = useCallback(() => JSON.stringify(diff, copyMessageReplacer, 2) ?? "", [diff]);
+
   return (
-    <Stack alignItems="flex-start" padding={0.25}>
+    <Stack alignItems="flex-start" paddingInline={0.25} paddingBlockStart={0.75}>
       <Stack direction="row" alignItems="center" gap={0.5}>
         <Typography variant="caption" lineHeight={1.2} color="text.secondary">
           {diffMessage ? (
@@ -86,7 +97,7 @@ export default function Metadata({
           )}
           {` @ ${formatTimeRaw(message.receiveTime)} sec`}
         </Typography>
-        <CopyButton size="small" iconSize="inherit" className={classes.button} getText={copyData} />
+        <CopyButton size="small" iconSize="small" className={classes.button} getText={copyData} />
       </Stack>
 
       {diffMessage?.receiveTime && (
@@ -99,12 +110,12 @@ export default function Metadata({
             >{`diff @ ${formatTimeRaw(diffMessage.receiveTime)} sec `}</Typography>
             <CopyButton
               size="small"
-              iconSize="inherit"
+              iconSize="small"
               className={classes.button}
               getText={copyDiffData}
             />
           </Stack>
-          <CopyButton size="small" iconSize="inherit" className={classes.button} getText={copyDiff}>
+          <CopyButton size="small" iconSize="small" className={classes.button} getText={copyDiff}>
             Copy diff of msgs
           </CopyButton>
         </>

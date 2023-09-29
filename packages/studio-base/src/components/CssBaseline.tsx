@@ -4,12 +4,11 @@
 
 import { alpha } from "@mui/material";
 import { PropsWithChildren } from "react";
+import tinycolor from "tinycolor2";
 import { makeStyles } from "tss-react/mui";
 
 import "@foxglove/studio-base/styles/assets/inter.css";
 import "@foxglove/studio-base/styles/assets/plex-mono.css";
-
-import { fonts } from "@foxglove/studio-base/util/sharedStyleConstants";
 
 const useStyles = makeStyles()(({ palette, typography }) => ({
   root: {
@@ -25,7 +24,7 @@ const useStyles = makeStyles()(({ palette, typography }) => ({
     color: palette.text.primary,
     font: "inherit",
     fontSize: typography.body2.fontSize,
-    fontFeatureSettings: fonts.SANS_SERIF_FEATURE_SETTINGS,
+    fontFeatureSettings: typography.fontFeatureSettings,
     fontFamily: typography.body2.fontFamily,
     fontWeight: typography.body2.fontWeight,
     zIndex: 0,
@@ -40,13 +39,18 @@ const useStyles = makeStyles()(({ palette, typography }) => ({
 
     /// --- child and element styling follows ---
     "code, pre, tt": {
-      fontFamily: fonts.MONOSPACE,
+      fontFamily: typography.fontMonospace,
       overflowWrap: "break-word",
+    },
+    mark: {
+      color: palette.info.main,
+      fontWeight: 700,
+      backgroundColor: "transparent",
     },
     div: {
       "::-webkit-scrollbar": {
-        width: 4,
-        height: 4,
+        width: 6,
+        height: 6,
       },
       "::-webkit-scrollbar-corner": {
         background: "transparent",
@@ -56,7 +60,7 @@ const useStyles = makeStyles()(({ palette, typography }) => ({
       },
       "::-webkit-scrollbar-thumb": {
         background: palette.action.focus,
-        borderRadius: 2,
+        borderRadius: 0,
       },
     },
     "p:not([class^='Mui')": {
@@ -161,13 +165,14 @@ const useStyles = makeStyles()(({ palette, typography }) => ({
         zIndex: 99,
 
         ".mosaic-split-line": {
-          boxShadow: `0 0 0 1px ${palette.grey.A100}`,
+          boxShadow: `0 0 0 1px ${palette.divider}`,
         },
         "&:hover .mosaic-split-line": {
-          boxShadow: `0 0 0 1px ${palette.grey.A100}`,
-        },
-        "&.-row": {
-          marginTop: 2,
+          boxShadow: `0 0 0 1px ${
+            palette.mode === "dark"
+              ? tinycolor(palette.divider).lighten().toHexString()
+              : tinycolor(palette.divider).darken().toHexString()
+          }`,
         },
       },
       "&.borderless": {
@@ -220,7 +225,7 @@ const useStyles = makeStyles()(({ palette, typography }) => ({
   },
 }));
 
-export default function CssBaseline(props: PropsWithChildren<unknown>): JSX.Element {
+export default function CssBaseline(props: PropsWithChildren): JSX.Element {
   const { classes } = useStyles();
 
   return <div className={classes.root}>{props.children}</div>;

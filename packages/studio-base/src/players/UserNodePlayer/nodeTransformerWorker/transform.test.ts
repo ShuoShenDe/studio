@@ -400,6 +400,7 @@ describe("pipeline", () => {
       description: string;
       datatypes?: RosDatatypes;
       error?: (typeof ErrorCodes.DatatypeExtraction)[keyof typeof ErrorCodes.DatatypeExtraction];
+      errorMessage?: string;
       outputDatatype?: string;
       only?: boolean;
       /* Debugging helper */
@@ -418,6 +419,22 @@ describe("pipeline", () => {
               isComplex: false,
               arrayLength: undefined,
               type: "float64",
+            },
+          ],
+        },
+      }),
+    );
+
+    const uint32DataType: RosDatatypes = new Map(
+      Object.entries({
+        [baseNodeData.name]: {
+          definitions: [
+            {
+              name: "val",
+              isArray: false,
+              isComplex: false,
+              arrayLength: undefined,
+              type: "uint32",
             },
           ],
         },
@@ -690,6 +707,15 @@ describe("pipeline", () => {
             return { num: 1 };
           };`,
         datatypes: numDataType,
+      },
+      {
+        description: "Enum as return type",
+        sourceCode: `
+          enum MyEnum { A = 1, B = 2, C };
+          export default (msg: any): { val: MyEnum } => {
+            return { val: MyEnum.A };
+          };`,
+        datatypes: uint32DataType,
       },
       {
         description: "Imported type from 'ros' in return type",
@@ -1135,6 +1161,79 @@ describe("pipeline", () => {
         outputDatatype: "std_msgs/ColorRGBA",
       },
       {
+        description: "Should detect output datatype from @foxglove/schemas",
+        sourceCode: `
+          import { Color } from "@foxglove/schemas";
+
+          export const inputs = [];
+          export const output = "${DEFAULT_STUDIO_NODE_PREFIX}";
+
+          const publisher = (message: any): Color => {
+            return { r: 1, g: 1, b: 1, a: 1 };
+          };
+
+          export default publisher;`,
+        datatypes: basicDatatypes,
+        outputDatatype: "foxglove.Color",
+      },
+      {
+        description: "Allows TypedArrays when output datatype is from @foxglove/schemas",
+        sourceCode: `
+          import { LaserScan } from "@foxglove/schemas";
+
+          export const inputs = [];
+          export const output = "${DEFAULT_STUDIO_NODE_PREFIX}";
+
+          const publisher = (message: any): LaserScan => {
+            return {
+              timestamp: {sec: 0, nsec: 1},
+              frame_id: "",
+              pose: {
+                position: {x: 0, y: 0, z: 0},
+                orientation: {x: 0, y: 0, z: 0, w: 1},
+              },
+              start_angle: 0,
+              end_angle: 0,
+              ranges: new Float64Array([1, 2, 3]),
+              intensities: new Float32Array([1, 2, 3]),
+            };
+          };
+
+          export default publisher;`,
+        datatypes: basicDatatypes,
+        outputDatatype: "foxglove.LaserScan",
+      },
+      {
+        description:
+          "Rejects wrong kind of TypedArray when output datatype is from @foxglove/schemas",
+        sourceCode: `
+          import { LaserScan } from "@foxglove/schemas";
+
+          export const inputs = [];
+          export const output = "${DEFAULT_STUDIO_NODE_PREFIX}";
+
+          const publisher = (message: any): LaserScan => {
+            return {
+              timestamp: {sec: 0, nsec: 1},
+              frame_id: "",
+              pose: {
+                position: {x: 0, y: 0, z: 0},
+                orientation: {x: 0, y: 0, z: 0, w: 1},
+              },
+              start_angle: 0,
+              end_angle: 0,
+              ranges: new Float64Array([1, 2, 3]),
+              intensities: new Uint32Array([1, 2, 3]),
+            };
+          };
+
+          export default publisher;`,
+        error: 2322,
+        errorMessage: expect.stringContaining(
+          `Type 'Uint32Array' is not assignable to type 'number[] | Float32Array | Float64Array'`,
+        ),
+      },
+      {
         description: "Should handle deep subtype lookup",
         sourceCode: `
           import { Input } from "ros";
@@ -1563,6 +1662,20 @@ describe("pipeline", () => {
           };`,
         error: ErrorCodes.DatatypeExtraction.BAD_TYPE_RETURN,
       },
+      {
+        description: "Generic type that's just too difficult :(",
+        sourceCode: `
+          import { Input, Message } from "./types";
+          type Output = {
+            foo: Message<"Foo">;
+          };
+          export default (msg: any): Output => {
+            throw new Error();
+          };`,
+        datatypes: new Map([["Foo", { definitions: [] }]]),
+        errorMessage: "Unsupported type for member 'foo'.",
+        error: ErrorCodes.DatatypeExtraction.BAD_TYPE_RETURN,
+      },
     ];
 
     describe("extracts datatypes from the return type of the publisher", () => {
@@ -1575,7 +1688,15 @@ describe("pipeline", () => {
         typeof skip === "boolean" ? !skip : true,
       );
       filteredTestCases.forEach(
-        ({ description, sourceCode, datatypes = new Map(), error, outputDatatype, rosLib }) => {
+        ({
+          description,
+          sourceCode,
+          datatypes = new Map(),
+          error,
+          errorMessage,
+          outputDatatype,
+          rosLib,
+        }) => {
           it(`${error != undefined ? "Expected Error: " : ""}${description}`, () => {
             const typesLib = generateTypesLib({ topics: [], datatypes });
             const inputNodeData: NodeData = {
@@ -1592,6 +1713,9 @@ describe("pipeline", () => {
               expect(nodeData.datatypes).toEqual(datatypes);
             } else {
               expect(nodeData.diagnostics.map(({ code }) => code)).toEqual([error]);
+            }
+            if (errorMessage != undefined) {
+              expect(nodeData.diagnostics.map(({ message }) => message)).toEqual([errorMessage]);
             }
           });
         },

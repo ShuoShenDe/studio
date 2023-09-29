@@ -20,14 +20,18 @@
     "prepack": "tsc -b"
   },
   "devDependencies": {
-    "@testing-library/react-hooks": "7.0.2",
-    "typescript": "4.9.4"
+    "@foxglove/tsconfig": "2.0.0",
+    "@testing-library/react": "14.0.0",
+    "@types/foxglove__web": "workspace:*",
+    "@types/lodash-es": "^4",
+    "typescript": "5.2.2"
   },
   "dependencies": {
     "@foxglove/log": "workspace:*",
+    "lodash-es": "4.17.21",
     "shallowequal": "1.1.0"
   },
   "peerDependencies": {
-    "react": "^17.0.2"
+    "react": "^18.2.0"
   }
 }

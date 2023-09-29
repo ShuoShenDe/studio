@@ -2,6 +2,8 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+/* eslint-disable @typescript-eslint/prefer-for-of, @typescript-eslint/no-base-to-string */
+
 import {
   Color,
   Inertia,
@@ -352,7 +354,7 @@ function parsePose(xml: Element): Pose {
 }
 
 function parseVec3Attribute(xml: Element, attribName: string): Vector3 | undefined {
-  const parts = xml.getAttribute(attribName)?.trim().split(" ");
+  const parts = xml.getAttribute(attribName)?.trim().split(/\s+/);
   if (parts?.length !== 3) {
     return undefined;
   }
@@ -362,7 +364,7 @@ function parseVec3Attribute(xml: Element, attribName: string): Vector3 | undefin
 }
 
 function parseColorAttribute(xml: Element, attribName: string): Color | undefined {
-  const parts = xml.getAttribute(attribName)?.trim().split(" ");
+  const parts = xml.getAttribute(attribName)?.trim().split(/\s+/);
   if (parts?.length !== 4) {
     return undefined;
   }

@@ -11,7 +11,7 @@ import { act } from "react-dom/test-utils";
 
 import { Condvar, signal } from "@foxglove/den/async";
 import { Time } from "@foxglove/rostime";
-import { PanelExtensionContext, RenderState, MessageEvent } from "@foxglove/studio";
+import { PanelExtensionContext, RenderState, MessageEvent, Immutable } from "@foxglove/studio";
 import MockPanelContextProvider from "@foxglove/studio-base/components/MockPanelContextProvider";
 import { AdvertiseOptions, PlayerCapabilities } from "@foxglove/studio-base/players/types";
 import PanelSetup, { Fixture } from "@foxglove/studio-base/stories/PanelSetup";
@@ -59,9 +59,10 @@ describe("PanelExtensionAdapter", () => {
   it("sets didSeek=true when seeking", async () => {
     const mockRAF = jest
       .spyOn(window, "requestAnimationFrame")
+      // eslint-disable-next-line @typescript-eslint/no-confusing-void-expression
       .mockImplementation((cb) => queueMicrotask(() => cb(performance.now())) as any);
 
-    const renderStates: RenderState[] = [];
+    const renderStates: Immutable<RenderState>[] = [];
 
     const initPanel = jest.fn((context: PanelExtensionContext) => {
       context.watch("currentFrame");
@@ -76,7 +77,7 @@ describe("PanelExtensionAdapter", () => {
     const config = {};
     const saveConfig = () => {};
 
-    const message: MessageEvent<unknown> = {
+    const message: MessageEvent = {
       topic: "x",
       receiveTime: { sec: 0, nsec: 1 },
       sizeInBytes: 0,
@@ -111,11 +112,17 @@ describe("PanelExtensionAdapter", () => {
     expect(initPanel).toHaveBeenCalled();
 
     wrapper.rerender(<Wrapper lastSeekTime={1} />);
-    await act(async () => await Promise.resolve());
+    await act(async () => {
+      await Promise.resolve();
+    });
     wrapper.rerender(<Wrapper lastSeekTime={1} />);
-    await act(async () => await Promise.resolve());
+    await act(async () => {
+      await Promise.resolve();
+    });
     wrapper.rerender(<Wrapper lastSeekTime={2} />);
-    await act(async () => await Promise.resolve());
+    await act(async () => {
+      await Promise.resolve();
+    });
     expect(renderStates).toEqual([
       { currentFrame: [message], didSeek: false },
       { currentFrame: [message], didSeek: true },
@@ -452,14 +459,14 @@ describe("PanelExtensionAdapter", () => {
     const initPanel = (context: PanelExtensionContext) => {
       expect(context).toBeDefined();
 
-      expect(() =>
+      expect(() => {
         context.layout.addPanel({
           position: "foo" as "sibling",
           type: "X",
           updateIfExists: true,
           getState: () => undefined,
-        }),
-      ).toThrow();
+        });
+      }).toThrow();
 
       context.layout.addPanel({
         position: "sibling",
@@ -534,10 +541,11 @@ describe("PanelExtensionAdapter", () => {
   it("should get and set variables", async () => {
     const mockRAF = jest
       .spyOn(window, "requestAnimationFrame")
+      // eslint-disable-next-line @typescript-eslint/no-confusing-void-expression
       .mockImplementation((cb) => queueMicrotask(() => cb(performance.now())) as any);
 
     let sequence = 0;
-    const renderStates: RenderState[] = [];
+    const renderStates: Immutable<RenderState>[] = [];
 
     const initPanel = jest.fn((context: PanelExtensionContext) => {
       context.watch("variables");
@@ -579,13 +587,21 @@ describe("PanelExtensionAdapter", () => {
     const handle = render(<Wrapper />);
 
     handle.rerender(<Wrapper />);
-    await act(async () => await Promise.resolve());
+    await act(async () => {
+      await Promise.resolve();
+    });
     handle.rerender(<Wrapper />);
-    await act(async () => await Promise.resolve());
+    await act(async () => {
+      await Promise.resolve();
+    });
     handle.rerender(<Wrapper />);
-    await act(async () => await Promise.resolve());
+    await act(async () => {
+      await Promise.resolve();
+    });
     handle.rerender(<Wrapper />);
-    await act(async () => await Promise.resolve());
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     expect(renderStates).toEqual([
       { variables: new Map() },
@@ -598,7 +614,7 @@ describe("PanelExtensionAdapter", () => {
   });
 
   it("should call pause frame with new frame and resume after rendering", async () => {
-    const renderStates: RenderState[] = [];
+    const renderStates: Immutable<RenderState>[] = [];
 
     const initPanel = jest.fn((context: PanelExtensionContext) => {
       context.watch("currentTime");
@@ -639,16 +655,18 @@ describe("PanelExtensionAdapter", () => {
     };
 
     // Setup the request animation frame to take some time
-    const mockRAF = jest.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
-      queueMicrotask(() => cb(performance.now())) as any;
-      return 1;
-    });
+    const mockRAF = jest
+      .spyOn(window, "requestAnimationFrame")
+      // eslint-disable-next-line @typescript-eslint/no-confusing-void-expression
+      .mockImplementation((cb) => queueMicrotask(() => cb(performance.now())) as any);
 
     const resumeFrameWait = pauseFrameCond.wait();
     render(<Wrapper currentTime={{ sec: 1, nsec: 0 }} />);
     expect(initPanel).toHaveBeenCalled();
 
-    await act(async () => await resumeFrameWait);
+    await act(async () => {
+      await resumeFrameWait;
+    });
 
     expect(renderStates).toEqual([
       {
@@ -695,7 +713,9 @@ describe("PanelExtensionAdapter", () => {
       [expect.any(String), [{ preloadType: "full", topic: "x" }]],
       [expect.any(String), []],
     ]);
-    await act(async () => await sig);
+    await act(async () => {
+      await sig;
+    });
     unmount();
     expect(mockSetSubscriptions.mock.calls).toEqual([
       [expect.any(String), [{ preloadType: "full", topic: "x" }]],

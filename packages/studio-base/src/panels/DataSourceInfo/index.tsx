@@ -2,11 +2,10 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { Box, Divider } from "@mui/material";
+import { Divider, Typography } from "@mui/material";
 import { makeStyles } from "tss-react/mui";
 
 import CopyButton from "@foxglove/studio-base/components/CopyButton";
-import { DataSourceInfoView } from "@foxglove/studio-base/components/DataSourceInfoView";
 import { DirectTopicStatsUpdater } from "@foxglove/studio-base/components/DirectTopicStatsUpdater";
 import EmptyState from "@foxglove/studio-base/components/EmptyState";
 import {
@@ -15,6 +14,7 @@ import {
 } from "@foxglove/studio-base/components/MessagePipeline";
 import Panel from "@foxglove/studio-base/components/Panel";
 import PanelToolbar from "@foxglove/studio-base/components/PanelToolbar";
+import Stack from "@foxglove/studio-base/components/Stack";
 import { Topic } from "@foxglove/studio-base/src/players/types";
 
 const useStyles = makeStyles<void, "copyIcon">()((theme, _params, classes) => ({
@@ -29,12 +29,12 @@ const useStyles = makeStyles<void, "copyIcon">()((theme, _params, classes) => ({
     borderCollapse: "collapse",
     display: "block",
     flex: 1,
-    overflowY: "auto",
 
     thead: {
       position: "sticky",
       textAlign: "left",
       top: 0,
+      zIndex: theme.zIndex.appBar - 1,
     },
 
     tr: {
@@ -77,16 +77,27 @@ function TopicRow({ topic }: { topic: Topic }): JSX.Element {
           iconSize="small"
           getText={() => topic.name}
         />
+        {topic.aliasedFromName && (
+          <Typography variant="subtitle2" fontSize="0.5rem">
+            from {topic.aliasedFromName}
+          </Typography>
+        )}
       </td>
       <td>
-        {topic.schemaName}
-        <CopyButton
-          className={classes.copyIcon}
-          edge="end"
-          size="small"
-          iconSize="small"
-          getText={() => topic.schemaName}
-        />
+        {topic.schemaName == undefined ? (
+          "—"
+        ) : (
+          <>
+            {topic.schemaName}
+            <CopyButton
+              className={classes.copyIcon}
+              edge="end"
+              size="small"
+              iconSize="small"
+              getText={() => topic.schemaName ?? ""}
+            />
+          </>
+        )}
       </td>
       <td data-topic={topic.name} data-topic-stat="count">
         &mdash;
@@ -124,26 +135,24 @@ function SourceInfo(): JSX.Element {
     <>
       <PanelToolbar />
       <Divider />
-      <Box paddingTop={1}>
-        <DataSourceInfoView />
-      </Box>
-      <Divider />
-      <table className={classes.table}>
-        <thead>
-          <tr>
-            <th>Topic Name</th>
-            <th>Datatype</th>
-            <th>Message count</th>
-            <th>Frequency</th>
-          </tr>
-        </thead>
-        <tbody>
-          {topics.map((topic) => (
-            <MemoTopicRow key={topic.name} topic={topic} />
-          ))}
-        </tbody>
-      </table>
-      <DirectTopicStatsUpdater interval={6} />
+      <Stack fullHeight overflowY="auto">
+        <table className={classes.table}>
+          <thead>
+            <tr>
+              <th>Topic Name</th>
+              <th>Datatype</th>
+              <th>Message count</th>
+              <th>Frequency</th>
+            </tr>
+          </thead>
+          <tbody>
+            {topics.map((topic) => (
+              <MemoTopicRow key={topic.name} topic={topic} />
+            ))}
+          </tbody>
+        </table>
+        <DirectTopicStatsUpdater interval={6} />
+      </Stack>
     </>
   );
 }

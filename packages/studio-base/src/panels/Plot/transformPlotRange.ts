@@ -13,23 +13,6 @@
 
 export type MathFunction = (arg: number) => number;
 
-export function derivative<T extends { x: number; y: number; path: string }>(data: T[]): T[] {
-  const newDatums = [];
-  for (let i = 1; i < data.length; i++) {
-    const item = data[i]!;
-    const prevItem = data[i - 1]!;
-    const secondsDifference = item.x - prevItem.x;
-    const value = (item.y - prevItem.y) / secondsDifference;
-    newDatums.push({
-      ...item,
-      y: value,
-      value,
-      path: `${item.path}.@derivative`,
-    });
-  }
-  return newDatums;
-}
-
 export const mathFunctions: { [fn: string]: MathFunction } = {
   abs: Math.abs,
   acos: Math.acos,
@@ -52,7 +35,7 @@ export const mathFunctions: { [fn: string]: MathFunction } = {
   rad2deg: (radians: number) => radians * (180 / Math.PI),
 };
 
-export function applyToDatum<T extends { y: number | string | bigint; path: string }>(
+export function applyToDatum<T extends { y: number | string | bigint }>(
   datum: T,
   func: MathFunction,
 ): T {
@@ -62,5 +45,5 @@ export function applyToDatum<T extends { y: number | string | bigint; path: stri
   if (!isNaN(numericYValue)) {
     y = func(numericYValue);
   }
-  return { ...datum, y, value: y, path: `${datum.path}.@${func.name}` };
+  return { ...datum, y, value: y };
 }

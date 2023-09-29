@@ -22,37 +22,38 @@ import {
   PlayerPresence,
 } from "@foxglove/studio-base/players/types";
 
-// ts-prune-ignore-next
 export default class FakePlayer implements Player {
-  private listener?: (arg0: PlayerState) => Promise<void>;
+  #listener?: (arg0: PlayerState) => Promise<void>;
   public playerId: string = "test";
   public subscriptions: SubscribePayload[] = [];
   public publishers: AdvertiseOptions[] | undefined;
-  private _capabilities: (typeof PlayerCapabilities)[keyof typeof PlayerCapabilities][] = [];
-  private _profile: string | undefined;
+  #capabilities: (typeof PlayerCapabilities)[keyof typeof PlayerCapabilities][] = [];
+  #profile: string | undefined;
 
   public setListener(listener: (arg0: PlayerState) => Promise<void>): void {
-    this.listener = listener;
+    this.#listener = listener;
   }
 
   public async emit({
     activeData,
     presence,
     progress,
+    playerId,
   }: {
     activeData?: PlayerStateActiveData;
     presence?: PlayerPresence;
     progress?: PlayerState["progress"];
+    playerId?: string;
   } = {}): Promise<void> {
-    if (!this.listener) {
+    if (!this.#listener) {
       return undefined;
     }
 
-    return await this.listener({
-      playerId: this.playerId,
+    await this.#listener({
+      playerId: playerId ?? this.playerId,
       presence: presence ?? PlayerPresence.PRESENT,
-      capabilities: this._capabilities,
-      profile: this._profile,
+      capabilities: this.#capabilities,
+      profile: this.#profile,
       progress: progress ?? {},
       activeData,
     });
@@ -85,10 +86,10 @@ export default class FakePlayer implements Player {
   public setCapabilities = (
     capabilities: (typeof PlayerCapabilities)[keyof typeof PlayerCapabilities][],
   ): void => {
-    this._capabilities = capabilities;
+    this.#capabilities = capabilities;
   };
   public setProfile = (profile: string | undefined): void => {
-    this._profile = profile;
+    this.#profile = profile;
   };
   public startPlayback = (): void => {
     // no-op

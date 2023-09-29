@@ -13,6 +13,7 @@ import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
 
 import Logger from "@foxglove/log";
+import { BuiltinPanelExtensionContext } from "@foxglove/studio-base/components/PanelExtensionAdapter";
 
 const log = Logger.getLogger(__filename);
 
@@ -23,6 +24,7 @@ export type ModelCacheOptions = {
   edgeMaterial: THREE.Material;
   ignoreColladaUpAxis: boolean;
   meshUpAxis: MeshUpAxis;
+  fetchAsset: BuiltinPanelExtensionContext["unstable_fetchAsset"];
 };
 
 type LoadModelOptions = {
@@ -33,7 +35,7 @@ export type LoadedModel = THREE.Group | THREE.Scene;
 
 type ErrorCallback = (err: Error) => void;
 
-const DEFAULT_COLOR = new THREE.Color(0x248eff).convertSRGBToLinear();
+const DEFAULT_COLOR = new THREE.Color(0x248eff);
 
 const GLTF_MIME_TYPES = ["model/gltf", "model/gltf-binary", "model/gltf+json"];
 // Sourced from <https://github.com/Ultimaker/Cura/issues/4141>
@@ -42,14 +44,16 @@ const DAE_MIME_TYPES = ["model/vnd.collada+xml"];
 const OBJ_MIME_TYPES = ["model/obj", "text/prs.wavefront-obj"];
 
 export class ModelCache {
-  private _textDecoder = new TextDecoder();
-  private _models = new Map<string, Promise<LoadedModel | undefined>>();
-  private _edgeMaterial: THREE.Material;
+  #textDecoder = new TextDecoder();
+  #models = new Map<string, Promise<LoadedModel | undefined>>();
+  #edgeMaterial: THREE.Material;
+  #fetchAsset: BuiltinPanelExtensionContext["unstable_fetchAsset"];
 
-  private _dracoLoader?: DRACOLoader;
+  #dracoLoader?: DRACOLoader;
 
   public constructor(public readonly options: ModelCacheOptions) {
-    this._edgeMaterial = options.edgeMaterial;
+    this.#edgeMaterial = options.edgeMaterial;
+    this.#fetchAsset = options.fetchAsset;
   }
 
   public async load(
@@ -57,41 +61,37 @@ export class ModelCache {
     opts: LoadModelOptions,
     reportError: ErrorCallback,
   ): Promise<LoadedModel | undefined> {
-    let promise = this._models.get(url);
+    let promise = this.#models.get(url);
     if (promise) {
       return await promise;
     }
 
-    promise = this._loadModel(url, opts, reportError)
-      .then((model) => addEdges(model, this._edgeMaterial))
+    promise = this.#loadModel(url, opts, reportError)
+      .then((model) => addEdges(model, this.#edgeMaterial))
       .catch(async (err) => {
         reportError(err as Error);
         return undefined;
       });
 
-    this._models.set(url, promise);
+    this.#models.set(url, promise);
     return await promise;
   }
 
-  private async _loadModel(
+  async #loadModel(
     url: string,
     options: LoadModelOptions,
     reportError: ErrorCallback,
   ): Promise<LoadedModel> {
     const GLB_MAGIC = 0x676c5446; // "glTF"
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      const errMsg = response.statusText;
-      throw new Error(`Error ${response.status}${errMsg ? ` (${errMsg})` : ``}`);
-    }
+    const asset = await this.#fetchAsset(url);
 
-    const buffer = await response.arrayBuffer();
+    const buffer = asset.data;
     if (buffer.byteLength < 4) {
       throw new Error(`${buffer.byteLength} bytes received`);
     }
-    const view = new DataView(buffer);
-    const contentType = options.overrideMediaType ?? response.headers.get("content-type") ?? "";
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const contentType = options.overrideMediaType ?? asset.mediaType ?? "";
 
     // Check if this is a glTF .glb or .gltf file
     if (
@@ -100,30 +100,36 @@ export class ModelCache {
       /\.glb$/i.test(url) ||
       /\.gltf$/i.test(url)
     ) {
-      return await this.loadGltf(url, reportError);
+      return await this.#loadGltf(url, reportError);
     }
 
     // Check if this is a STL file based on content-type or file extension
     if (STL_MIME_TYPES.includes(contentType) || /\.stl$/i.test(url)) {
-      return this.loadSTL(url, buffer, this.options.meshUpAxis);
+      // Create a copy of the array buffer to respect the `byteOffset` and `byteLength` value as
+      // the underlying three.js STLLoader only accepts an ArrayBuffer instance.
+      return this.#loadSTL(
+        url,
+        buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+        this.options.meshUpAxis,
+      );
     }
 
     // Check if this is a COLLADA file based on content-type or file extension
     if (DAE_MIME_TYPES.includes(contentType) || /\.dae$/i.test(url)) {
-      const text = this._textDecoder.decode(buffer);
-      return await this.loadCollada(url, text, this.options.ignoreColladaUpAxis, reportError);
+      const text = this.#textDecoder.decode(buffer);
+      return await this.#loadCollada(url, text, this.options.ignoreColladaUpAxis, reportError);
     }
 
     // Check if this is an OBJ file based on content-type or file extension
     if (OBJ_MIME_TYPES.includes(contentType) || /\.obj$/i.test(url)) {
-      const text = this._textDecoder.decode(buffer);
-      return await this.loadOBJ(url, text, this.options.meshUpAxis, reportError);
+      const text = this.#textDecoder.decode(buffer);
+      return await this.#loadOBJ(url, text, this.options.meshUpAxis, reportError);
     }
 
     throw new Error(`Unknown ${buffer.byteLength} byte mesh (content-type: "${contentType}")`);
   }
 
-  private async loadGltf(url: string, reportError: ErrorCallback): Promise<LoadedModel> {
+  async #loadGltf(url: string, reportError: ErrorCallback): Promise<LoadedModel> {
     const onError = (assetUrl: string) => {
       const originalUrl = unrewriteUrl(assetUrl);
       log.error(`Failed to load GLTF asset "${originalUrl}" for "${url}"`);
@@ -134,7 +140,7 @@ export class ModelCache {
     manager.setURLModifier(rewriteUrl);
     const gltfLoader = new GLTFLoader(manager);
     gltfLoader.setMeshoptDecoder(MeshoptDecoder);
-    gltfLoader.setDRACOLoader(this.getDracoLoader(manager));
+    gltfLoader.setDRACOLoader(this.#getDracoLoader(manager));
 
     manager.itemStart(url);
     const gltf = await gltfLoader.loadAsync(url);
@@ -147,7 +153,7 @@ export class ModelCache {
     return gltf.scene;
   }
 
-  private loadSTL(url: string, buffer: ArrayBuffer, meshUpAxis: MeshUpAxis): LoadedModel {
+  #loadSTL(url: string, buffer: ArrayBuffer, meshUpAxis: MeshUpAxis): LoadedModel {
     // STL files do not reference any external assets, no LoadingManager needed
     const stlLoader = new STLLoader();
     const bufferGeometry = stlLoader.parse(buffer);
@@ -172,7 +178,7 @@ export class ModelCache {
     return group;
   }
 
-  private async loadCollada(
+  async #loadCollada(
     url: string,
     text: string,
     // eslint-disable-next-line @foxglove/no-boolean-parameters
@@ -192,7 +198,9 @@ export class ModelCache {
     const upAxis = ignoreUpAxis
       ? "Z_UP"
       : (xml.querySelector("up_axis")?.textContent ?? "Y_UP").trim().toUpperCase();
-    xml.querySelectorAll("up_axis").forEach((node) => node.remove());
+    xml.querySelectorAll("up_axis").forEach((node) => {
+      node.remove();
+    });
     const xmlText = xml.documentElement.outerHTML;
 
     const manager = new THREE.LoadingManager(undefined, undefined, onError);
@@ -212,7 +220,7 @@ export class ModelCache {
     return fixDaeMaterials(dae.scene);
   }
 
-  private async loadOBJ(
+  async #loadOBJ(
     url: string,
     text: string,
     meshUpAxis: MeshUpAxis,
@@ -242,8 +250,8 @@ export class ModelCache {
   }
 
   // singleton dracoloader
-  private getDracoLoader(manager: THREE.LoadingManager): DRACOLoader {
-    let dracoLoader = this._dracoLoader;
+  #getDracoLoader(manager: THREE.LoadingManager): DRACOLoader {
+    let dracoLoader = this.#dracoLoader;
     if (!dracoLoader) {
       dracoLoader = new DRACOLoader(manager);
       // Hack in a replacement function to load assets from the webpack bundle
@@ -260,7 +268,7 @@ export class ModelCache {
           );
         }
       };
-      this._dracoLoader = dracoLoader;
+      this.#dracoLoader = dracoLoader;
     }
 
     dracoLoader.manager = manager;
@@ -269,11 +277,12 @@ export class ModelCache {
 
   public dispose(): void {
     // DRACOLoader is only loader that needs to be disposed because it uses a webworker
-    this._dracoLoader?.dispose();
-    this._dracoLoader = undefined;
+    this.#dracoLoader?.dispose();
+    this.#dracoLoader = undefined;
   }
 }
 
+export const EDGE_LINE_SEGMENTS_NAME = "edges";
 function addEdges(model: LoadedModel, edgeMaterial: THREE.Material): LoadedModel {
   const edgesToAdd: [edges: THREE.LineSegments, parent: THREE.Object3D][] = [];
 
@@ -289,6 +298,7 @@ function addEdges(model: LoadedModel, edgeMaterial: THREE.Material): LoadedModel
     // Draw edges for all meshes
     const edgesGeometry = new THREE.EdgesGeometry(child.geometry, 40);
     const line = new THREE.LineSegments(edgesGeometry, edgeMaterial);
+    line.name = EDGE_LINE_SEGMENTS_NAME;
     edgesToAdd.push([line, child]);
   });
 

@@ -64,10 +64,12 @@ export function ColorGradientInput({
   return (
     <Stack
       direction="row"
+      alignItems="center"
+      position="relative"
+      paddingX={0.75}
       style={{
         opacity: disabled ? 0.5 : 1,
         pointerEvents: disabled ? "none" : "auto",
-        position: "relative",
         background: `linear-gradient(to right, ${safeLeftColor}, ${safeRightColor}), repeating-conic-gradient(transparent 0 90deg, ${theme.palette.action.disabled} 90deg 180deg) top left/10px 10px repeat`,
       }}
     >
@@ -96,7 +98,9 @@ export function ColorGradientInput({
         <ColorPickerControl
           value={leftColor}
           alphaType="alpha"
-          onChange={(newValue) => onChange([newValue, rightColor])}
+          onChange={(newValue) => {
+            onChange([newValue, rightColor]);
+          }}
           onEnterKey={handleClose}
         />
       </Popover>
@@ -116,7 +120,9 @@ export function ColorGradientInput({
         <ColorPickerControl
           value={rightColor}
           alphaType="alpha"
-          onChange={(newValue) => onChange([leftColor, newValue])}
+          onChange={(newValue) => {
+            onChange([leftColor, newValue]);
+          }}
           onEnterKey={handleClose}
         />
       </Popover>

@@ -14,19 +14,18 @@
 import { useTheme } from "@mui/material";
 import { ScaleOptions } from "chart.js";
 import { AnnotationOptions } from "chartjs-plugin-annotation";
-import { ComponentProps, useMemo } from "react";
+import { useMemo } from "react";
 import { useResizeDetector } from "react-resize-detector";
 
 import { filterMap } from "@foxglove/den/collection";
 import TimeBasedChart, {
-  Props as TimeBasedChartProps,
   ChartDefaultView,
-  TimeBasedChartTooltipData,
+  Props as TimeBasedChartProps,
 } from "@foxglove/studio-base/components/TimeBasedChart";
 import { getLineColor } from "@foxglove/studio-base/util/plotColors";
 
-import { PlotXAxisVal } from "./index";
-import { PlotPath, isReferenceLinePlotPathType } from "./internalTypes";
+import { PlotPath, PlotXAxisVal, isReferenceLinePlotPathType } from "./internalTypes";
+import { PlotData } from "./plotData";
 
 // A "reference line" plot path is a numeric value. It creates a horizontal line on the plot at the specified value.
 function getAnnotationFromReferenceLine(path: PlotPath, index: number): AnnotationOptions {
@@ -62,8 +61,8 @@ type PlotChartProps = {
   maxYValue: number;
   showXAxisLabels: boolean;
   showYAxisLabels: boolean;
-  datasets: ComponentProps<typeof TimeBasedChart>["data"]["datasets"];
-  tooltips: Map<string, TimeBasedChartTooltipData>;
+  provider: TimeBasedChartProps["typedProvider"];
+  datasetBounds: PlotData["bounds"];
   xAxisVal: PlotXAxisVal;
   currentTime?: number;
   defaultView?: ChartDefaultView;
@@ -72,17 +71,17 @@ type PlotChartProps = {
 export default function PlotChart(props: PlotChartProps): JSX.Element {
   const theme = useTheme();
   const {
-    paths,
     currentTime,
+    datasetBounds,
+    provider,
     defaultView,
+    isSynced,
+    maxYValue,
+    minYValue,
+    onClick,
+    paths,
     showXAxisLabels,
     showYAxisLabels,
-    minYValue,
-    maxYValue,
-    datasets,
-    onClick,
-    isSynced,
-    tooltips,
     xAxisVal,
   } = props;
 
@@ -116,10 +115,6 @@ export default function PlotChart(props: PlotChartProps): JSX.Element {
     refreshMode: "debounce",
   });
 
-  const data = useMemo(() => {
-    return { datasets };
-  }, [datasets]);
-
   return (
     <div style={{ width: "100%", flexGrow: 1, overflow: "hidden", padding: "2px" }} ref={sizeRef}>
       <TimeBasedChart
@@ -128,8 +123,8 @@ export default function PlotChart(props: PlotChartProps): JSX.Element {
         zoom
         width={width ?? 0}
         height={height ?? 0}
-        data={data}
-        tooltips={tooltips}
+        typedProvider={provider}
+        dataBounds={datasetBounds}
         annotations={annotations}
         type="scatter"
         yAxes={yAxes}

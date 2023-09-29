@@ -3,10 +3,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
 import { Link, Button, Typography } from "@mui/material";
-import { captureException } from "@sentry/core";
 import { Component, ErrorInfo, PropsWithChildren, ReactNode } from "react";
 
 import Stack from "@foxglove/studio-base/components/Stack";
+import { reportError } from "@foxglove/studio-base/reportError";
 import { AppError } from "@foxglove/studio-base/util/errors";
 
 import ErrorDisplay from "./ErrorDisplay";
@@ -27,7 +27,7 @@ export default class ErrorBoundary extends Component<PropsWithChildren<Props>, S
   };
 
   public override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    captureException(new AppError(error, errorInfo));
+    reportError(new AppError(error, errorInfo));
     this.setState({ currentError: { error, errorInfo } });
   }
 
@@ -44,7 +44,9 @@ export default class ErrorBoundary extends Component<PropsWithChildren<Props>, S
           <Button
             variant="outlined"
             color="secondary"
-            onClick={() => this.setState({ currentError: undefined })}
+            onClick={() => {
+              this.setState({ currentError: undefined });
+            }}
           >
             Dismiss
           </Button>
@@ -59,7 +61,12 @@ export default class ErrorBoundary extends Component<PropsWithChildren<Props>, S
           content={
             <Typography>
               Something went wrong.{" "}
-              <Link color="inherit" onClick={() => this.setState({ currentError: undefined })}>
+              <Link
+                color="inherit"
+                onClick={() => {
+                  this.setState({ currentError: undefined });
+                }}
+              >
                 Dismiss this error
               </Link>{" "}
               to continue using the app. If the issue persists, try restarting the app.

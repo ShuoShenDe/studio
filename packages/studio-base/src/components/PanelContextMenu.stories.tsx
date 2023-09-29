@@ -2,8 +2,9 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { Story } from "@storybook/react";
-import { fireEvent } from "@testing-library/dom";
+import { StoryObj } from "@storybook/react";
+import { userEvent } from "@storybook/testing-library";
+import { useCallback } from "react";
 import { v4 as uuid } from "uuid";
 
 import Panel from "@foxglove/studio-base/components/Panel";
@@ -21,16 +22,19 @@ export default {
 const DUMMY_CLASS = uuid();
 
 function DummyPanel(): JSX.Element {
-  const items: PanelContextMenuItem[] = [
-    { type: "item", label: "Download Image", onclick: () => undefined },
-    { type: "item", label: "Flip Horizontal", onclick: () => undefined },
-    { type: "item", label: "Flip Vertical", onclick: () => undefined },
-  ];
+  const getItems = useCallback(
+    (): PanelContextMenuItem[] => [
+      { type: "item", label: "Download Image", onclick: () => undefined },
+      { type: "item", label: "Flip Horizontal", onclick: () => undefined },
+      { type: "item", label: "Flip Vertical", onclick: () => undefined },
+    ],
+    [],
+  );
 
   return (
     <>
       <PanelToolbar />
-      <PanelContextMenu itemsForClickPosition={() => items} />
+      <PanelContextMenu getItems={getItems} />
       <div
         className={DUMMY_CLASS}
         style={{
@@ -50,22 +54,31 @@ function DummyPanel(): JSX.Element {
 
 const Dummy = Panel(
   Object.assign(DummyPanel, {
-    panelType: "ImageViewPanel",
+    panelType: "Dummy",
     defaultConfig: {},
   }),
 );
 
-export const Default: Story = () => {
-  return (
-    <PanelSetup>
-      <Dummy></Dummy>
-    </PanelSetup>
-  );
-};
+export const Default: StoryObj = {
+  render: () => {
+    return (
+      <PanelSetup>
+        <Dummy></Dummy>
+      </PanelSetup>
+    );
+  },
 
-Default.play = () => {
-  Array.from(document.getElementsByClassName(DUMMY_CLASS)).forEach((el) => {
-    const rect = el.getBoundingClientRect();
-    fireEvent.contextMenu(el, { clientX: rect.x + 100, clientY: rect.y + 100 });
-  });
+  play: async () => {
+    for (const target of document.getElementsByClassName(DUMMY_CLASS)) {
+      const rect = target.getBoundingClientRect();
+      await userEvent.pointer({
+        target,
+        keys: "[MouseRight]",
+        coords: {
+          clientX: rect.x + 100,
+          clientY: rect.y + 100,
+        },
+      });
+    }
+  },
 };

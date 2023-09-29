@@ -2,7 +2,7 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
-import { transform } from "lodash";
+import * as _ from "lodash-es";
 
 import { filterMap } from "@foxglove/den/collection";
 import { SettingsTreeFields, SettingsTreeNodes, Topic } from "@foxglove/studio";
@@ -16,6 +16,7 @@ export type Config = {
   layer: string;
   topicColors: Record<string, string>;
   zoomLevel?: number;
+  maxNativeZoom?: number;
 };
 
 export function validateCustomUrl(url: string): Error | undefined {
@@ -30,11 +31,23 @@ export function validateCustomUrl(url: string): Error | undefined {
   return undefined;
 }
 
+function isGeoJSONSchema(schemaName: string) {
+  switch (schemaName) {
+    case "foxglove_msgs/GeoJSON":
+    case "foxglove_msgs/msg/GeoJSON":
+    case "foxglove::GeoJSON":
+    case "foxglove.GeoJSON":
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function buildSettingsTree(
   config: Config,
   eligibleTopics: Omit<Topic, "datatype">[],
 ): SettingsTreeNodes {
-  const topics: SettingsTreeNodes = transform(
+  const topics: SettingsTreeNodes = _.transform(
     eligibleTopics,
     (result, topic) => {
       const coloring = config.topicColors[topic.name];
@@ -69,7 +82,7 @@ export function buildSettingsTree(
   );
 
   const eligibleFollowTopicOptions = filterMap(eligibleTopics, (topic) =>
-    config.disabledTopics.includes(topic.name)
+    config.disabledTopics.includes(topic.name) || isGeoJSONSchema(topic.schemaName)
       ? undefined
       : { label: topic.name, value: topic.name },
   );
@@ -99,6 +112,16 @@ export function buildSettingsTree(
       input: "string",
       value: config.customTileUrl,
       error,
+    };
+
+    generalSettings.maxNativeZoom = {
+      label: "Max tile level",
+      input: "select",
+      value: config.maxNativeZoom,
+      options: [18, 19, 20, 21, 22, 23, 24].map((num) => {
+        return { label: String(num), value: num };
+      }),
+      help: "Highest zoom supported by the custom map source. See https://leafletjs.com/examples/zoom-levels/ for more information.",
     };
   }
 

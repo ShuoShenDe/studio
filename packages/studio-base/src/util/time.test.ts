@@ -38,7 +38,7 @@ describe("time.formatTimeRaw", () => {
 
 describe("time.getTimestampForMessageEvent", () => {
   it("uses headerStamp when available", () => {
-    const messageBase: Omit<MessageEvent<unknown>, "message"> = {
+    const messageBase: Omit<MessageEvent, "message"> = {
       topic: "/foo",
       receiveTime: { sec: 1000, nsec: 0 },
       sizeInBytes: 0,
@@ -67,6 +67,15 @@ describe("time.getTimestampForMessageEvent", () => {
     ).toEqual({ sec: 0, nsec: 0 });
     expect(
       time.getTimestampForMessageEvent({ ...messageBase, message: {} }, "headerStamp"),
+    ).toEqual(undefined);
+    expect(
+      time.getTimestampForMessageEvent(
+        {
+          ...messageBase,
+          message: { header: { stamp: 1694712977, seq: 0, frame_id: "" } },
+        },
+        "headerStamp",
+      ),
     ).toEqual(undefined);
   });
 });
