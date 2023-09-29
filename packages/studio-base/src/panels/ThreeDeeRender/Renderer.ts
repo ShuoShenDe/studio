@@ -25,6 +25,10 @@ import {
   Topic,
   VariableValue,
 } from "@foxglove/studio";
+import { FoxgloveGrid } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/FoxgloveGrid";
+import { light, dark } from "@foxglove/studio-base/theme/palette";
+import { LDObjectLists } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/LDObjects";
+import { fonts } from "@foxglove/studio-base/util/sharedStyleConstants";
 import { PanelContextMenuItem } from "@foxglove/studio-base/components/PanelContextMenu";
 import {
   Asset,
@@ -63,6 +67,14 @@ import {
   normalizeTFMessage,
   normalizeTransformStamped,
 } from "./normalizeMessages";
+import { Cameras } from "./renderables/Cameras";
+import { CircleGrids } from "./renderables/CircleGrids";
+import { CoreSettings } from "./renderables/CoreSettings";
+import { FrameAxes, LayerSettingsTransform } from "./renderables/FrameAxes";
+import { Grids } from "./renderables/Grids";
+import { Images } from "./renderables/Images";
+import { LaserScans } from "./renderables/LaserScans";
+import { Markers } from "./renderables/Markers";
 import { CameraStateSettings } from "./renderables/CameraStateSettings";
 import { ImageMode } from "./renderables/ImageMode/ImageMode";
 import { MeasurementTool } from "./renderables/MeasurementTool";
@@ -359,6 +371,30 @@ export class Renderer extends EventEmitter<RendererEvents> implements IRenderer 
 
     this.#watchDevicePixelRatio();
 
+    this.addSceneExtension(this.coreSettings);
+    this.addSceneExtension(new Cameras(this));
+    this.addSceneExtension(new FrameAxes(this));
+    this.addSceneExtension(new Grids(this));
+    this.addSceneExtension(new CircleGrids(this));
+    this.addSceneExtension(new LDObjectLists(this));
+    this.addSceneExtension(new Images(this));
+    this.addSceneExtension(new Markers(this));
+    this.addSceneExtension(new FoxgloveSceneEntities(this));
+    this.addSceneExtension(new FoxgloveGrid(this));
+    this.addSceneExtension(new LaserScans(this));
+    this.addSceneExtension(new OccupancyGrids(this));
+    this.addSceneExtension(new PointClouds(this));
+    this.addSceneExtension(new Polygons(this));
+    this.addSceneExtension(new Poses(this));
+    this.addSceneExtension(new PoseArrays(this));
+    this.addSceneExtension(new Urdfs(this));
+    this.addSceneExtension(new VelodyneScans(this));
+    this.addSceneExtension(this.measurementTool);
+    this.addSceneExtension(this.publishClickTool);
+
+    this._watchDevicePixelRatio();
+
+    this._updateCameras(config.cameraState);
     this.setCameraState(config.cameraState);
     this.animationFrame();
   }
