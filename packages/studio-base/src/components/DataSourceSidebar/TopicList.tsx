@@ -109,6 +109,8 @@ const selectPlayerPresence = ({ playerState }: MessagePipelineContext) => player
 
 const selectSortedTopics = (ctx: MessagePipelineContext) => ctx.sortedTopics;
 
+const selectSubscriptions = (ctx: MessagePipelineContext) => ctx.subscriptions;
+
 function TopicListItem({
   topic,
   positions,
@@ -172,6 +174,9 @@ export function TopicList(): JSX.Element {
 
   const playerPresence = useMessagePipeline(selectPlayerPresence);
   const topics = useMessagePipeline(selectSortedTopics);
+  // renzhou
+  // const sub = useMessagePipeline(selectSubscriptions);
+  // console.log(sub)
 
   const filteredTopics: FzfResultItem<Topic>[] = useMemo(
     () =>
@@ -184,7 +189,6 @@ export function TopicList(): JSX.Element {
         : topics.map((item) => topicToFzfResult(item)),
     [filterText, topics],
   );
-
   if (playerPresence === PlayerPresence.ERROR) {
     return (
       <Stack flex="auto" padding={2} fullHeight alignItems="center" justifyContent="center">

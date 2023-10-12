@@ -67,6 +67,9 @@ export function usePanelSettingsTreeUpdate(): (newTree: ImmutableSettingsTree) =
 
   const updateSettingsTree = useCallback(
     (newTree: ImmutableSettingsTree) => {
+      // renzhou
+      // console.log('new tree')
+      // console.log(newTree)
       updateStoreTree(id, newTree);
     },
     [id, updateStoreTree],
@@ -169,7 +172,9 @@ const selectPanelTypesInUse = createSelector(selectLayoutConfigById, (config) =>
 
 export function PanelStateContextProvider({ children }: { children?: ReactNode }): JSX.Element {
   const [store] = useState(createPanelStateStore());
-
+  // renzhou
+  // console.log('rz')
+  // console.log(store.getState())
   // discared shared panel state for panel types that are no longer in the layout
   const panelTypesInUse = useCurrentLayoutSelector(selectPanelTypesInUse);
   useEffect(() => {

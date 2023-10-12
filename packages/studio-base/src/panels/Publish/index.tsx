@@ -48,6 +48,9 @@ type Props = {
 };
 
 function buildSettingsTree(config: Config): SettingsTreeNodes {
+  // renzhou
+  // console.log(config)
+  // not use
   return {
     general: {
       icon: "Settings",

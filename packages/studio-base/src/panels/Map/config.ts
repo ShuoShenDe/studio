@@ -34,6 +34,8 @@ export function buildSettingsTree(
   config: Config,
   eligibleTopics: Omit<Topic, "datatype">[],
 ): SettingsTreeNodes {
+    // renzhou
+    console.log('123')
   const topics: SettingsTreeNodes = transform(
     eligibleTopics,
     (result, topic) => {

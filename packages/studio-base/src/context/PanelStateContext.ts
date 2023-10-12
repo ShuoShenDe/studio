@@ -56,5 +56,7 @@ export function usePanelStateStore<T>(
   equalityFn?: (a: T, b: T) => boolean,
 ): T {
   const context = useGuaranteedContext(PanelStateContext);
+  //console.log(context.getState())
+  // console.log(PanelStateContext)
   return useStore(context, selector, equalityFn);
 }

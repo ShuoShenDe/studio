@@ -35,7 +35,7 @@ export class RenderableCube extends RenderableMarker {
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.add(this.mesh);
-
+    
     // Cube outline
     this.outline = new THREE.LineSegments(cubeEdgesGeometry, renderer.outlineMaterial);
     this.outline.userData.picking = false;

@@ -2419,6 +2419,7 @@ __metadata:
     "@types/text-metrics": "workspace:*"
     "@types/three": ^0.140.0
     "@types/tinycolor2": 1.4.3
+    "@types/uint32": 0.2.0
     "@types/url-search-params": 1.1.0
     "@types/uuid": 8.3.4
     "@types/wicg-file-system-access": 2020.9.5
@@ -6143,6 +6144,13 @@ __metadata:
   dependencies:
     source-map: ^0.6.1
   checksum: def36fd2c698a33d8f67f5e21aab926eb9bda2d7951eab544941e1feb1231f020ff1c210d840dcc0fc9f07b5d22ef8b566887ddec9753b8b9f7223cceaa70993
+  languageName: node
+  linkType: hard
+
+"@types/uint32@npm:0.2.0":
+  version: 0.2.0
+  resolution: "@types/uint32@npm:0.2.0"
+  checksum: 10e31438f0be48629742ff148f2ae0030008b63d232472bc836dd19c34cdf219ccdfac1d7ff5d89e116c405e4b43e485268375f3343d00a84d1b3f32e3e24691
   languageName: node
   linkType: hard
 

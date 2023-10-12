@@ -178,6 +178,10 @@ const userNodeSelector = (state: LayoutState) =>
 
 function NodePlayground(props: Props) {
   const { config, saveConfig } = props;
+  // renzhou
+  // console.log('123')
+  // console.log(config)
+  // not use
   const { autoFormatOnSave = false, selectedNodeId, editorForStorybook } = config;
   const updatePanelSettingsTree = usePanelSettingsTreeUpdate();
 

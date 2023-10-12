@@ -590,7 +590,7 @@ export default function Workspace(props: WorkspaceProps): JSX.Element {
     [getMessagePipeline],
   );
 
-  return (
+  return ( // PanelLayout 播放栏
     <MultiProvider
       providers={[
         /* eslint-disable react/jsx-key */

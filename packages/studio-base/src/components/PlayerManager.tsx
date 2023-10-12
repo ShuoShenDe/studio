@@ -210,7 +210,6 @@ export default function PlayerManager(props: PropsWithChildren<PlayerManagerProp
                 fileList.push(curFile);
               }
               const multiFile = foundSource.supportsMultiFile === true && fileList.length > 1;
-
               const newPlayer = foundSource.initialize({
                 file: multiFile ? undefined : file,
                 files: multiFile ? fileList : undefined,
@@ -222,7 +221,6 @@ export default function PlayerManager(props: PropsWithChildren<PlayerManagerProp
               if (file) {
                 void nativeWindow?.setRepresentedFilename((file as { path?: string }).path); // File.path is added by Electron
               }
-
               setBasePlayer(newPlayer);
               return;
             } else if (handle) {

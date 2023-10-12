@@ -21,7 +21,7 @@ class Ros1LocalBagDataSourceFactory implements IDataSourceFactory {
     if (!file) {
       return;
     }
-
+    console.log(args)
     const source = new WorkerIterableSource({
       sourceType: "rosbag",
       initArgs: { file },

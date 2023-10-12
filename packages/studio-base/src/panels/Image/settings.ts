@@ -45,6 +45,8 @@ export function buildSettingsTree({
   enabledMarkerTopics: readonly string[];
   relatedMarkerTopics: readonly string[];
 }): SettingsTreeNodes {
+  // renzhou
+  console.log('123')
   return {
     general: {
       label: "General",

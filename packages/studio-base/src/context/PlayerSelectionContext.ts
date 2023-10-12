@@ -120,7 +120,10 @@ const PlayerSelectionContext = createContext<PlayerSelection>({
 PlayerSelectionContext.displayName = "PlayerSelectionContext";
 
 export function usePlayerSelection(): PlayerSelection {
-  return useContext(PlayerSelectionContext);
+  // renzhou
+  const result = useContext(PlayerSelectionContext);
+  // console.log(result)
+  return result;
 }
 
 export default PlayerSelectionContext;

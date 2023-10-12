@@ -5,6 +5,7 @@
 import type { Renderer } from "../../Renderer";
 import { MarkerType, Marker } from "../../ros";
 import { RenderableArrow } from "./RenderableArrow";
+import { RenderableCircleList } from "./RenderableCircleList";
 import { RenderableCube } from "./RenderableCube";
 import { RenderableCubeList } from "./RenderableCubeList";
 import { RenderableCylinder } from "./RenderableCylinder";
@@ -31,6 +32,7 @@ const CONSTRUCTORS = {
   [MarkerType.TEXT_VIEW_FACING]: RenderableTextViewFacing,
   [MarkerType.MESH_RESOURCE]: RenderableMeshResource,
   [MarkerType.TRIANGLE_LIST]: RenderableTriangleList,
+  [MarkerType.CIRCLE_LIST]: RenderableCircleList,
 };
 
 /**

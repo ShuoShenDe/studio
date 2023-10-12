@@ -48,6 +48,10 @@ export function stringToRgb<T extends ColorRGB | THREE.Color>(output: T, colorSt
   return output;
 }
 
+export function makeRgb(): ColorRGB {
+  return { r: 0, g: 0, b: 0 };
+}
+
 /** Converts a ColorRGB to THREE.Color and converts from sRGB to linear RGB. */
 export function rgbToThreeColor(output: THREE.Color, rgb: ColorRGB): THREE.Color {
   return output.setRGB(rgb.r, rgb.g, rgb.b).convertSRGBToLinear();

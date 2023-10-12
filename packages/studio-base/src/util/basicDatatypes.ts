@@ -4,6 +4,7 @@
 
 import { ros1, ros2galactic } from "@foxglove/rosmsg-msgs-common";
 import { foxgloveMessageSchemas, generateRosMsgDefinition } from "@foxglove/schemas/internal";
+// import { ldmsg } from "@foxglove/studio-base/ld";
 import { RosDatatypes } from "@foxglove/studio-base/types/RosDatatypes";
 
 /**
@@ -24,6 +25,14 @@ for (const [name, def] of Object.entries(ros2galactic)) {
 for (const [name, def] of Object.entries(ros1)) {
   basicDatatypes.set(name, def);
 }
+
+// Add LD message schemas
+// for (const [name, def] of Object.entries(ldmsg)) {
+//   basicDatatypes.set(name, def);
+// }
+// renzhou
+//console.log('basicdatatypes')
+//console.log(basicDatatypes)
 
 // Add foxglove message schemas
 for (const schema of Object.values(foxgloveMessageSchemas)) {

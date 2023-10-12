@@ -9,6 +9,8 @@ export function buildSettingsTree(
   topicToRender: string,
   availableTopics: Topic[],
 ): SettingsTreeNodes {
+  // renzhou
+  console.log('123')
   const topicOptions = availableTopics.map((topic) => ({ label: topic.name, value: topic.name }));
   const topicIsAvailable = availableTopics.some((topic) => topic.name === topicToRender);
   if (!topicIsAvailable) {

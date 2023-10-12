@@ -16,6 +16,7 @@ import {
   Transform,
   TransformStamped,
   Vector3,
+  Twist,
 } from "./ros";
 import type { Pose } from "./transforms";
 
@@ -133,6 +134,13 @@ export function normalizeColorRGBAs(
     return [];
   }
   return colors.map(normalizeColorRGBA);
+}
+
+export function normalizeTwist(twist: PartialMessage<Twist> | undefined): Twist {
+  return {
+    linear: normalizeVector3(twist?.linear),
+    angular: normalizeVector3(twist?.angular)
+  };
 }
 
 export function normalizePose(pose: PartialMessage<Pose> | undefined): Pose {

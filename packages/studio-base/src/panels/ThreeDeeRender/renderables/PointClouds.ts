@@ -529,7 +529,7 @@ export class PointClouds extends SceneExtension<PointCloudRenderable> {
 
   public constructor(renderer: Renderer) {
     super("foxglove.PointClouds", renderer);
-
+    // renzhou
     renderer.addSchemaSubscriptions(ROS_POINTCLOUD_DATATYPES, this.handleRosPointCloud);
     renderer.addSchemaSubscriptions(FOXGLOVE_POINTCLOUD_DATATYPES, this.handleFoxglovePointCloud);
   }
@@ -681,6 +681,8 @@ export class PointClouds extends SceneExtension<PointCloudRenderable> {
 
   private handleRosPointCloud = (messageEvent: PartialMessageEvent<PointCloud2>): void => {
     const topic = messageEvent.topic;
+    //
+    // console.log(topic)
     const pointCloud = normalizePointCloud2(messageEvent.message);
     const receiveTime = toNanoSec(messageEvent.receiveTime);
 

@@ -26,6 +26,8 @@ export function buildSettingsTree(
   model: undefined | URDFRobot,
   assetOptions: Array<{ label: string; value: string }>,
 ): SettingsTreeNodes {
+    // renzhou
+    console.log('123')
   const manualControl = isEmpty(config.jointStatesTopic);
   const topicOptions = topics.map((topic) => ({ label: topic.name, value: topic.name }));
 

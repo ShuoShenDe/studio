@@ -41,3 +41,42 @@ export const DEFAULT_CAMERA_STATE: CameraState = {
   near: 0.5,
   far: 5000,
 };
+
+export const DEFAULT_XYPLANE_CAMERA_STATE: CameraState = {
+  distance: 180,
+  perspective: true,
+  phi: 0.01,
+  target: [0, 0, 0],
+  targetOffset: [0, 0, 0],
+  targetOrientation: [0, 0, 0, 1],
+  thetaOffset: 0,
+  fovy: 45,
+  near: 0.5,
+  far: 5000,
+};
+
+export const DEFAULT_YZPLANE_CAMERA_STATE: CameraState = {
+  distance: 90,
+  perspective: true,
+  phi: 90,
+  target: [60, -5, 0],
+  targetOffset: [0, 0, 0],
+  targetOrientation: [0, 0, 0, 1],
+  thetaOffset: -90,
+  fovy: 45,
+  near: 0.5,
+  far: 5000,
+};
+
+export const DEFAULT_XZPLANE_CAMERA_STATE: CameraState = {
+  distance: 60,
+  perspective: true,
+  phi: 90,
+  target: [0, 0, 0],
+  targetOffset: [0, 0, 0],
+  targetOrientation: [0, 0, 0, 1],
+  thetaOffset: 0,
+  fovy: 45,
+  near: 0.5,
+  far: 5000,
+};

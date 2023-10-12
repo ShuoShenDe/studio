@@ -108,6 +108,8 @@ export class BagIterableSource implements IIterableSource {
     const topicStats = new Map<string, TopicStats>();
     const publishersByTopic: Initalization["publishersByTopic"] = new Map();
     for (const [id, connection] of this._bag.connections) {
+      //renzhou
+      // connection.type is msg type like ld_msgs/ld_object_list
       const schemaName = connection.type;
       if (!schemaName) {
         continue;
@@ -154,7 +156,6 @@ export class BagIterableSource implements IIterableSource {
         }
       }
     }
-
     return {
       topics: Array.from(topics.values()),
       topicStats,

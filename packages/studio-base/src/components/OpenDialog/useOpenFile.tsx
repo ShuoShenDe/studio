@@ -36,8 +36,10 @@ export function useOpenFile(sources: IDataSourceFactory[]): () => Promise<void> 
     if (!fileHandle) {
       return;
     }
-
     const file = await fileHandle.getFile();
+    // renzhou
+    // console.log(file)
+    // console.log(fileHandle)
     // Find the first _file_ source which can load our extension
     const matchingSources = sources.filter((source) => {
       // Only consider _file_ type sources that have a list of supported file types
@@ -57,7 +59,10 @@ export function useOpenFile(sources: IDataSourceFactory[]): () => Promise<void> 
     if (!foundSource) {
       throw new Error(`Cannot find source to handle ${file.name}`);
     }
-
+    // console.log(foundSource.id)
     selectSource(foundSource.id, { type: "file", handle: fileHandle });
+    // renzhou
+    // console.log(foundSource)
+    //console.log()
   }, [allExtensions, selectSource, sources]);
 }

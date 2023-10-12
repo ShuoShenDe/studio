@@ -23,6 +23,7 @@ import {
   VariableValue,
 } from "@foxglove/studio";
 import { FoxgloveGrid } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/FoxgloveGrid";
+import { LDObjectListScene } from "@foxglove/studio-base/panels/ThreeDeeRender/renderables/LDObjectList";
 import { light, dark } from "@foxglove/studio-base/theme/palette";
 import { fonts } from "@foxglove/studio-base/util/sharedStyleConstants";
 import { LabelMaterial, LabelPool } from "@foxglove/three-text";
@@ -46,6 +47,7 @@ import {
   normalizeTransformStamped,
 } from "./normalizeMessages";
 import { Cameras } from "./renderables/Cameras";
+import { CircleGrids } from "./renderables/CircleGrids";
 import { CoreSettings } from "./renderables/CoreSettings";
 import { FrameAxes, LayerSettingsTransform } from "./renderables/FrameAxes";
 import { Grids } from "./renderables/Grids";
@@ -354,6 +356,7 @@ export class Renderer extends EventEmitter<RendererEvents> {
       alpha: true,
       antialias: true,
     });
+
     if (!this.gl.capabilities.isWebGL2) {
       throw new Error("WebGL2 is not supported");
     }
@@ -396,18 +399,13 @@ export class Renderer extends EventEmitter<RendererEvents> {
     this.hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 0.5);
     this.hemiLight.layers.enableAll();
 
-    this.scene.add(this.dirLight);
-    this.scene.add(this.hemiLight);
-
     this.perspectiveCamera = new THREE.PerspectiveCamera();
     this.orthographicCamera = new THREE.OrthographicCamera();
     this.cameraGroup = new THREE.Group();
-
     this.cameraGroup.add(this.perspectiveCamera);
     this.cameraGroup.add(this.orthographicCamera);
-    this.scene.add(this.cameraGroup);
 
-    this.controls = new OrbitControls(this.perspectiveCamera, this.canvas);
+    this.controls = new OrbitControls(this.perspectiveCamera, this.canvas); // this.perspectiveCamera
     this.controls.screenSpacePanning = false; // only allow panning in the XY plane
     this.controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
     this.controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
@@ -432,7 +430,8 @@ export class Renderer extends EventEmitter<RendererEvents> {
 
     this.selectionBackdrop = new ScreenOverlay(this);
     this.selectionBackdrop.visible = false;
-    this.scene.add(this.selectionBackdrop);
+    // renzhou
+    // this.scene.add(this.selectionBackdrop);
 
     this.followFrameId = config.followTf;
     this.followMode = config.followMode;
@@ -471,6 +470,7 @@ export class Renderer extends EventEmitter<RendererEvents> {
     this.addSceneExtension(new Cameras(this));
     this.addSceneExtension(new FrameAxes(this));
     this.addSceneExtension(new Grids(this));
+    this.addSceneExtension(new CircleGrids(this));
     this.addSceneExtension(new Images(this));
     this.addSceneExtension(new Markers(this));
     this.addSceneExtension(new FoxgloveSceneEntities(this));
@@ -483,6 +483,7 @@ export class Renderer extends EventEmitter<RendererEvents> {
     this.addSceneExtension(new PoseArrays(this));
     this.addSceneExtension(new Urdfs(this));
     this.addSceneExtension(new VelodyneScans(this));
+    this.addSceneExtension(new LDObjectListScene(this));
     this.addSceneExtension(this.measurementTool);
     this.addSceneExtension(this.publishClickTool);
 
@@ -564,6 +565,7 @@ export class Renderer extends EventEmitter<RendererEvents> {
       throw new Error(`Attempted to add duplicate extensionId "${extension.extensionId}"`);
     }
     this.sceneExtensions.set(extension.extensionId, extension);
+    // renzhou
     this.scene.add(extension);
   }
 
@@ -614,6 +616,8 @@ export class Renderer extends EventEmitter<RendererEvents> {
     if (!handlers.includes(genericSubscription)) {
       handlers.push(genericSubscription);
     }
+    // renzhou
+    // console.log('topic changed')
     this.emit("topicHandlersChanged", this);
   }
 

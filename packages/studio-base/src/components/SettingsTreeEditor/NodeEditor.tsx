@@ -196,7 +196,15 @@ function NodeEditorComponent(props: NodeEditorProps): JSX.Element {
   };
 
   const { fields, children } = settings;
+  //renzhou
+  // console.log(settings)
   const hasChildren = children != undefined && Object.keys(children).length > 0;
+
+  //renzhou
+  // if(children != undefined){
+  // console.log(children);
+  // }
+
   const hasProperties = fields != undefined || hasChildren;
 
   const fieldEditors = filterMap(Object.entries(fields ?? {}), ([key, field]) => {

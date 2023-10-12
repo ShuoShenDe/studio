@@ -38,6 +38,7 @@ export enum MarkerType {
   TEXT_VIEW_FACING = 9,
   MESH_RESOURCE = 10,
   TRIANGLE_LIST = 11,
+  CIRCLE_LIST = 12,
 }
 
 export enum MarkerAction {
@@ -76,6 +77,11 @@ export type Vector3 = {
 
 export type Point = Vector3;
 export type Point32 = Vector3;
+
+export type Twist = {
+  linear: Vector3;
+  angular: Vector3;
+};
 
 export type Quaternion = {
   x: number;
@@ -154,6 +160,7 @@ export type PointField = {
   count: number;
 };
 
+//ld point cloud msg
 export type PointCloud2 = {
   header: Header;
   height: number;
@@ -164,6 +171,78 @@ export type PointCloud2 = {
   row_step: number;
   data: Uint8Array;
   is_dense: boolean;
+};
+
+//ld object
+export type LDObject = {
+  header: Header;
+  id: number;
+  tracking_age: number;
+  Age: Time;
+  lifetime: Time;
+  object_status: string;
+  confidence: number;
+  color: ColorRGBA;
+  pose_reliable: boolean;
+  pose: Pose;
+  pose_var: Point;
+  gps_pos: Point;
+  gps_var: Point;
+  tracking_points: Point;
+  tracking_point_type: number;
+  jsk_pose: Pose;
+  yaw: number;
+  yaw_var: number;
+  heading_angle: number;
+  heading_angle_var: number;
+  pitch: number;
+  pitch_var: number;
+  dimensions: Vector3;
+  dimensions_var: Point;
+  clustered_dimensions: Vector3;
+  velocity: Twist;
+  velocity_var: Twist;
+  abs_velocity: number;
+  abs_velocity_var: number;
+  rel_velocity: Twist;
+  rel_velocity_var: Twist;
+  rel_abs_velocity: number;
+  rel_abs_velocity_var: number;
+  acceleration: Twist;
+  acceleration_var: Twist;
+  abs_acceleration: number;
+  abs_acceleration_var: number;
+  rel_acceleration: Twist;
+  rel_acceleration_var: Twist;
+  rel_abs_acceleration: number;
+  rel_abs_acceleration_var: number;
+  lane_relation: number;
+  visibility: number;
+  solid_angle: number;
+  reflectivity: number;
+  occlusion: string;
+  occlusion_l: string;
+  occlusion_h: string;
+  occlusion_w: string;
+  occlusion_lowerpart: boolean;
+  validity: boolean;
+  has_sun: boolean;
+  relation_type: number;
+  relation_id: number;
+  has_child: boolean;
+  class_label_true: string;
+  class_label_pred: string;
+  target_added: boolean;
+  target_deleted: boolean;
+  subclass_label_true: string;
+  subclass_label_pred: string;
+  behavior_state: number;
+};
+
+export type LDObjectList = {
+  header: Header;
+  frame_number: number;
+  objects: LDObject[];
 };
 
 export type LaserScan = {
@@ -307,6 +386,10 @@ addRosDataType(OCCUPANCY_GRID_DATATYPES, "nav_msgs/OccupancyGrid");
 
 export const POINTCLOUD_DATATYPES = new Set<string>();
 addRosDataType(POINTCLOUD_DATATYPES, "sensor_msgs/PointCloud2");
+
+//renzhou //ld_msg
+export const LD_OBJ_LIST_DATATYPES = new Set<string>();
+addRosDataType(LD_OBJ_LIST_DATATYPES, "ld_msgs/ld_object_list");
 
 export const LASERSCAN_DATATYPES = new Set<string>();
 addRosDataType(LASERSCAN_DATATYPES, "sensor_msgs/LaserScan");

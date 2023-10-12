@@ -2,8 +2,11 @@
 // License, v2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/
 
+import YZPlaneIcon from "@mdi/svg/svg/axis-x-arrow.svg";
+import XZPlaneIcon from "@mdi/svg/svg/axis-y-arrow.svg";
+import XYPlaneIcon from "@mdi/svg/svg/axis-z-arrow.svg";
 import RulerIcon from "@mdi/svg/svg/ruler.svg";
-import Video3dIcon from "@mdi/svg/svg/video-3d.svg";
+// import Video3dIcon from "@mdi/svg/svg/video-3d.svg";
 import {
   IconButton,
   ListItemIcon,
@@ -52,7 +55,14 @@ import {
 } from "./Renderer";
 import { RendererContext, useRenderer, useRendererEvent } from "./RendererContext";
 import { Stats } from "./Stats";
-import { CameraState, DEFAULT_CAMERA_STATE, MouseEventObject } from "./camera";
+import {
+  CameraState,
+  DEFAULT_CAMERA_STATE,
+  MouseEventObject,
+  DEFAULT_XYPLANE_CAMERA_STATE,
+  DEFAULT_YZPLANE_CAMERA_STATE,
+  DEFAULT_XZPLANE_CAMERA_STATE,
+} from "./camera";
 import {
   makePointMessage,
   makePoseEstimateMessage,
@@ -95,7 +105,10 @@ function RendererOverlay(props: {
   addPanel: LayoutActions["addPanel"];
   enableStats: boolean;
   perspective: boolean;
-  onTogglePerspective: () => void;
+  // onTogglePerspective: () => void;
+  onXYPlane: () => void;
+  onYZPlane: () => void;
+  onXZPlane: () => void;
   measureActive: boolean;
   onClickMeasure: () => void;
   canPublish: boolean;
@@ -129,6 +142,7 @@ function RendererOverlay(props: {
     const rect = props.canvas!.getBoundingClientRect();
     setClickedPosition({ clientX: rect.left + cursorCoords.x, clientY: rect.top + cursorCoords.y });
     setSelectedRenderables(selections);
+    console.log(selections);
     setSelectedRenderable(selections.length === 1 ? selections[0] : undefined);
   });
 
@@ -229,12 +243,25 @@ function RendererOverlay(props: {
         />
         <Paper square={false} elevation={4} style={{ display: "flex", flexDirection: "column" }}>
           <IconButton
-            color={props.perspective ? "info" : "inherit"}
-            title={props.perspective ? "Switch to 2D camera" : "Switch to 3D camera"}
-            onClick={props.onTogglePerspective}
+            title="Reset to XY-Plane"
+            onClick={props.onXYPlane}
             style={{ pointerEvents: "auto" }}
           >
-            <Video3dIcon style={{ width: 16, height: 16 }} />
+            <XYPlaneIcon style={{ width: 16, height: 16 }} />
+          </IconButton>
+          <IconButton
+            title="Reset to YZ-Plane"
+            onClick={props.onYZPlane}
+            style={{ pointerEvents: "auto" }}
+          >
+            <YZPlaneIcon style={{ width: 16, height: 16 }} />
+          </IconButton>
+          <IconButton
+            title="Reset to XZ-Plane"
+            onClick={props.onXZPlane}
+            style={{ pointerEvents: "auto" }}
+          >
+            <XZPlaneIcon style={{ width: 16, height: 16 }} />
           </IconButton>
           <IconButton
             data-testid="measure-button"
@@ -363,7 +390,10 @@ function useRendererProperty<K extends keyof Renderer>(
  * A panel that renders a 3D scene. This is a thin wrapper around a `Renderer` instance.
  */
 export function ThreeDeeRender({ context }: { context: PanelExtensionContext }): JSX.Element {
+  // renzhou
+  // console.log(context)
   const { initialState, saveState } = context;
+  // console.log(context)
 
   // Load and save the persisted panel configuration
   const [config, setConfig] = useState<RendererConfig>(() => {
@@ -410,7 +440,7 @@ export function ThreeDeeRender({ context }: { context: PanelExtensionContext }):
   }, [canvas, configRef, config.scene.transforms?.enablePreloading]);
 
   const [colorScheme, setColorScheme] = useState<"dark" | "light" | undefined>();
-  const [topics, setTopics] = useState<ReadonlyArray<Topic> | undefined>();
+  const [topics, setTopics] = useState<ReadonlyArray<Topic> | undefined>(); // all topics in this file
   const [parameters, setParameters] = useState<ReadonlyMap<string, ParameterValue> | undefined>();
   const [variables, setVariables] = useState<ReadonlyMap<string, VariableValue> | undefined>();
   const [messages, setMessages] = useState<ReadonlyArray<MessageEvent<unknown>> | undefined>();
@@ -428,6 +458,7 @@ export function ThreeDeeRender({ context }: { context: PanelExtensionContext }):
     () => new Map(),
   );
   const topicHandlers = useRendererProperty(
+    // get Renderer property topicHandler if topicHanderlersChanged
     renderer,
     "topicHandlers",
     "topicHandlersChanged",
@@ -532,6 +563,10 @@ export function ThreeDeeRender({ context }: { context: PanelExtensionContext }):
   // Update the renderer's reference to `topics` when it changes
   useEffect(() => {
     if (renderer) {
+      // renzhou
+      // console.log('topics')
+      // console.log(topics)
+      // console.log('topics end')
       renderer.setTopics(topics);
       renderRef.current.needsRender = true;
     }
@@ -626,6 +661,8 @@ export function ThreeDeeRender({ context }: { context: PanelExtensionContext }):
     };
 
     for (const topic of topics) {
+      // renzhou
+      // console.log('print topics');
       for (const rendererSubscription of topicHandlers.get(topic.name) ?? []) {
         addSubscription(topic.name, rendererSubscription);
       }
@@ -643,7 +680,8 @@ export function ThreeDeeRender({ context }: { context: PanelExtensionContext }):
     newSubscriptions.sort((a, b) => a.topic.localeCompare(b.topic));
     setTopicsToSubscribe((prev) => (isEqual(prev, newSubscriptions) ? prev : newSubscriptions));
   }, [topics, config.topics, schemaHandlers, topicHandlers]);
-
+  // renzhou
+  // console.log(topicsToSubscribe) // topicsToSubscribe show which topic need to be rendered
   // Notify the extension context when our subscription list changes
   useEffect(() => {
     if (!topicsToSubscribe) {
@@ -897,6 +935,27 @@ export function ThreeDeeRender({ context }: { context: PanelExtensionContext }):
     });
   }, [actionHandler, renderer]);
 
+  const onXYPlane = useCallback(() => {
+    renderer?.updateConfig((draft) => {
+      draft.cameraState = cloneDeep(DEFAULT_XYPLANE_CAMERA_STATE);
+    });
+    renderer?.updateCoreSettings();
+  }, [renderer]);
+
+  const onYZPlane = useCallback(() => {
+    renderer?.updateConfig((draft) => {
+      draft.cameraState = cloneDeep(DEFAULT_YZPLANE_CAMERA_STATE);
+    });
+    renderer?.updateCoreSettings();
+  }, [renderer]);
+
+  const onXZPlane = useCallback(() => {
+    renderer?.updateConfig((draft) => {
+      draft.cameraState = cloneDeep(DEFAULT_XZPLANE_CAMERA_STATE);
+    });
+    renderer?.updateCoreSettings();
+  }, [renderer]);
+
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       if (event.key === "3") {
@@ -931,7 +990,10 @@ export function ThreeDeeRender({ context }: { context: PanelExtensionContext }):
             addPanel={addPanel}
             enableStats={config.scene.enableStats ?? false}
             perspective={config.cameraState.perspective}
-            onTogglePerspective={onTogglePerspective}
+            // onTogglePerspective={onTogglePerspective}
+            onXYPlane={onXYPlane}
+            onYZPlane={onYZPlane}
+            onXZPlane={onXZPlane}
             measureActive={measureActive}
             onClickMeasure={onClickMeasure}
             canPublish={canPublish}
